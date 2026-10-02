@@ -89,6 +89,31 @@ export const CHARACTERS = [
   { id: 'kor',    name: 'KOR',    color: 0xc62828, desc: 'Güçlü ama yavaş',     speed: 0.9,  power: 1.15, projectileSpeed: 8 },
   { id: 'ayaz',   name: 'AYAZ',   color: 0x1e5bd6, desc: 'Dengeli, hızlı top',   speed: 1.0,  power: 1.0,  projectileSpeed: 11.5 },
   { id: 'kuzgun', name: 'KUZGUN', color: 0x7b2fbf, desc: 'Çevik ama kırılgan',   speed: 1.2,  power: 0.85, projectileSpeed: 9 },
+  { id: 'yildirim', name: 'YILDIRIM', color: 0xd4a017, desc: 'En hızlı, ağır top',  speed: 1.25, power: 0.95, projectileSpeed: 6.5 },
+];
+
+/**
+ * Arenas share the same geometry; only colours, textures and lighting
+ * change, so switching never adds or removes lights (no shader recompiles).
+ * Texture palettes: floor { base, speck: [r, g, b], grout }, wall { base, brick: [r, g, b] }.
+ */
+export const ARENAS = [
+  {
+    name: 'ZINDAN',
+    sky: 0x0b0b16, hemiSky: 0x9aa8ff, hemiGround: 0x2a1010, hemi: 1.1,
+    key: 0xffffff, keyIntensity: 2.2, rims: [0xff2a2a, 0x2a6bff], torch: 0xff8a2a,
+    floor: { base: '#2a2730', speck: [40, 35, 45], grout: '#141218' },
+    wall: { base: '#100e16', brick: [32, 26, 36] },
+    pillar: 0x3a3440, banners: [0xc62828, 0x1e5bd6],
+  },
+  {
+    name: 'TAPINAK',
+    sky: 0x2a1424, hemiSky: 0xffb27a, hemiGround: 0x3a1e0c, hemi: 1.0,
+    key: 0xffc890, keyIntensity: 2.6, rims: [0xff6a2a, 0xffb347], torch: 0xffc061,
+    floor: { base: '#5e4a30', speck: [110, 88, 58], grout: '#2e2214' },
+    wall: { base: '#24160e', brick: [88, 64, 42] },
+    pillar: 0x8a6a45, banners: [0x8a1c1c, 0xd4a017],
+  },
 ];
 
 // Impact freeze on clean hits (seconds). Blocked hits don't freeze.

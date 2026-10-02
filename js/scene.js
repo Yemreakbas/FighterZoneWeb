@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ARENA, CAMERA } from './config.js';
+import { ARENA, ARENAS, CAMERA } from './config.js';
 
 /**
  * Owns the renderer, camera, lights and the static arena.
@@ -26,8 +26,41 @@ export function createStage(container) {
   camera.position.set(0, CAMERA.height, CAMERA.distance);
   camera.lookAt(0, 1.4, 0);
 
-  addLights(scene);
-  addArena(scene);
+  const lights = addLights(scene);
+  const arena = addArena(scene);
+
+  // Textures for every arena are generated once up front.
+  const textures = ARENAS.map((a) => ({
+    floor: stoneTexture(a.floor, 30, 15),
+    wall: brickTexture(a.wall),
+  }));
+  let arenaIndex = -1;
+
+  /** Re-skin the shared arena geometry and lighting. */
+  function setArena(i) {
+    const idx = ARENAS[i] ? i : 0;
+    if (idx === arenaIndex) return;
+    arenaIndex = idx;
+    const a = ARENAS[idx];
+    scene.background.setHex(a.sky);
+    scene.fog.color.setHex(a.sky);
+    lights.hemi.color.setHex(a.hemiSky);
+    lights.hemi.groundColor.setHex(a.hemiGround);
+    lights.hemi.intensity = a.hemi;
+    lights.key.color.setHex(a.key);
+    lights.key.intensity = a.keyIntensity;
+    lights.rims.forEach((l, j) => l.color.setHex(a.rims[j]));
+    arena.torches.forEach((l) => l.color.setHex(a.torch));
+    arena.floor.map = textures[idx].floor;
+    arena.wall.map = textures[idx].wall;
+    arena.floor.needsUpdate = arena.wall.needsUpdate = true;
+    arena.pillar.color.setHex(a.pillar);
+    arena.banners.forEach((m, j) => {
+      m.color.setHex(a.banners[j]);
+      m.emissive.setHex(a.banners[j]);
+    });
+  }
+  setArena(0);
 
   const onResize = () => {
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -71,13 +104,15 @@ export function createStage(container) {
     scene,
     camera,
     updateCamera,
+    setArena,
     shake: (amount) => { shakeAmt = Math.max(shakeAmt, amount); },
     render: () => renderer.render(scene, camera),
   };
 }
 
 function addLights(scene) {
-  scene.add(new THREE.HemisphereLight(0x9aa8ff, 0x2a1010, 1.1));
+  const hemi = new THREE.HemisphereLight(0x9aa8ff, 0x2a1010, 1.1);
+  scene.add(hemi);
 
   // Soft fill from the camera side so the fighters' visible faces read.
   const fill = new THREE.DirectionalLight(0xffe8d0, 0.7);
@@ -100,12 +135,13 @@ function addLights(scene) {
   const rimBlue = new THREE.PointLight(0x2a6bff, 30, 30);
   rimBlue.position.set(10, 5, -4);
   scene.add(rimRed, rimBlue);
+  return { hemi, key, rims: [rimRed, rimBlue] };
 }
 
 function addArena(scene) {
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(60, 30),
-    new THREE.MeshStandardMaterial({ map: stoneTexture(30, 15), roughness: 0.85, metalness: 0.1 })
+    new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0.1 })
   );
   floor.rotation.x = -Math.PI / 2;
   floor.position.y = ARENA.groundY;
@@ -124,6 +160,7 @@ function addArena(scene) {
 
   // Stone pillars marking the arena boundaries.
   const pillarMat = new THREE.MeshStandardMaterial({ color: 0x3a3440, roughness: 0.9 });
+  const torches = [];
   for (const side of [-1, 1]) {
     const pillar = new THREE.Mesh(new THREE.BoxGeometry(1, 6, 1), pillarMat);
     pillar.position.set(side * (ARENA.halfWidth + 1.5), 3, -1.5);
@@ -134,25 +171,27 @@ function addArena(scene) {
     const torch = new THREE.PointLight(0xff8a2a, 8, 8);
     torch.position.set(side * (ARENA.halfWidth + 1.5), 6.4, -0.8);
     scene.add(torch);
+    torches.push(torch);
   }
 
   // Back wall.
   const wall = new THREE.Mesh(
     new THREE.PlaneGeometry(60, 20),
-    new THREE.MeshStandardMaterial({ map: brickTexture(), roughness: 1 })
+    new THREE.MeshStandardMaterial({ roughness: 1 })
   );
   wall.position.set(0, 10, -8);
   scene.add(wall);
 
-  // Glowing banners in the fighters' colours.
-  for (const [x, color] of [[-5, 0xc62828], [5, 0x1e5bd6]]) {
-    const banner = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.4, 3.2),
-      new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.12, roughness: 0.95 })
-    );
+  // Glowing banners (colours set per arena).
+  const banners = [-5, 5].map((x) => {
+    const mat = new THREE.MeshStandardMaterial({ emissiveIntensity: 0.12, roughness: 0.95 });
+    const banner = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 3.2), mat);
     banner.position.set(x, 4.4, -7.9);
     scene.add(banner);
-  }
+    return mat;
+  });
+
+  return { floor: floor.material, wall: wall.material, pillar: pillarMat, torches, banners };
 }
 
 // ---------------------------------------------------------------------------
@@ -172,18 +211,19 @@ function canvasTexture(size, draw, repeatX = 1, repeatY = 1) {
 }
 
 /** Large worn stone slabs; repeat is in tiles across the floor plane. */
-function stoneTexture(repeatX, repeatY) {
+function stoneTexture(palette, repeatX, repeatY) {
+  const [cr, cg, cb] = palette.speck;
   return canvasTexture(256, (g, n) => {
-    g.fillStyle = '#2a2730';
+    g.fillStyle = palette.base;
     g.fillRect(0, 0, n, n);
     // Speckle noise for a gritty surface.
     for (let i = 0; i < 2500; i++) {
-      const v = 30 + Math.random() * 30;
-      g.fillStyle = `rgba(${v + 10}, ${v + 5}, ${v + 15}, 0.35)`;
+      const v = (Math.random() - 0.5) * 30;
+      g.fillStyle = `rgba(${cr + v}, ${cg + v}, ${cb + v}, 0.35)`;
       g.fillRect(Math.random() * n, Math.random() * n, 2, 2);
     }
     // Grout lines: 2x2 slabs per tile.
-    g.strokeStyle = '#141218';
+    g.strokeStyle = palette.grout;
     g.lineWidth = 4;
     g.strokeRect(0, 0, n, n);
     g.beginPath();
@@ -193,9 +233,10 @@ function stoneTexture(repeatX, repeatY) {
   }, repeatX / 2, repeatY / 2);
 }
 
-function brickTexture() {
+function brickTexture(palette) {
+  const [cr, cg, cb] = palette.brick;
   return canvasTexture(256, (g, n) => {
-    g.fillStyle = '#100e16';
+    g.fillStyle = palette.base;
     g.fillRect(0, 0, n, n);
     const rows = 8;
     const h = n / rows;
@@ -203,8 +244,8 @@ function brickTexture() {
     for (let r = 0; r < rows; r++) {
       const offset = r % 2 ? w / 2 : 0;
       for (let c = -1; c < 5; c++) {
-        const v = 26 + Math.random() * 14;
-        g.fillStyle = `rgb(${v + 6}, ${v}, ${v + 10})`;
+        const v = (Math.random() - 0.5) * 14;
+        g.fillStyle = `rgb(${cr + v}, ${cg + v}, ${cb + v})`;
         g.fillRect(c * w + offset + 2, r * h + 2, w - 4, h - 4);
       }
     }

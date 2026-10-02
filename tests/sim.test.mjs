@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { ARENA, ATTACKS, MATCH, NET, PHYSICS, TICK } from '../js/config.js';
+import { ARENA, ARENAS, ATTACKS, CHARACTERS, MATCH, NET, PHYSICS, TICK } from '../js/config.js';
 import { EMPTY_INPUT } from '../js/fighter.js';
 import { createMatch } from '../js/game.js';
 import { createBot } from '../js/bot.js';
@@ -411,4 +411,28 @@ test('a fatality is still possible after mashing into the dazed loser', () => {
   run(m, 30, () => [{ left: true }, {}]);
   const ev = run(m, 90, press('special'));
   assert.ok(ev.some((e) => e.type === 'fatality'));
+});
+
+// ---------------------------------------------------------------------------
+// Content: characters and arenas
+// ---------------------------------------------------------------------------
+
+test('arena and every character survive the network round trip', () => {
+  for (let c = 0; c < CHARACTERS.length; c++) {
+    const m = createMatch(['A', 'B'], [c, (c + 1) % CHARACTERS.length], ARENAS.length - 1);
+    const interp = createInterpolator();
+    interp.push(JSON.parse(JSON.stringify(encodeSnapshot(m.state, 1, []))));
+    const { state } = interp.sample();
+    assert.deepEqual(state.chars, [c, (c + 1) % CHARACTERS.length]);
+    assert.equal(state.arena, ARENAS.length - 1);
+  }
+});
+
+test('an out-of-range arena from the network falls back to the first', () => {
+  const m = createMatch();
+  const packet = JSON.parse(JSON.stringify(encodeSnapshot(m.state, 1, [])));
+  packet.s.ar = 99;
+  const interp = createInterpolator();
+  interp.push(packet);
+  assert.equal(interp.sample().state.arena, 0);
 });

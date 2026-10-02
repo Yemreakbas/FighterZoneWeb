@@ -1,4 +1,4 @@
-import { CHARACTERS, NET, TICK } from './config.js';
+import { ARENAS, CHARACTERS, NET, TICK } from './config.js';
 
 // State packets (host -> client) and client-side interpolation.
 //
@@ -101,6 +101,7 @@ export function encodeSnapshot(state, tick, events, ack = 0) {
       hs: r3(state.hitstop || 0),
       n: state.names,
       ch: state.chars,
+      ar: state.arena,
       r: state.round,
       tm: r3(state.timer),
       p: state.phase,
@@ -145,6 +146,7 @@ function decodeState(s) {
   return {
     names: Array.isArray(s.n) ? s.n.slice(0, 2).map((x) => String(x).slice(0, 16)) : ['P1', 'P2'],
     chars: Array.isArray(s.ch) ? [validChar(s.ch[0]), validChar(s.ch[1])] : [0, 1],
+    arena: Number.isInteger(s.ar) && s.ar >= 0 && s.ar < ARENAS.length ? s.ar : 0,
     round: num(s.r, 1),
     timer: num(s.tm),
     phase: s.p,

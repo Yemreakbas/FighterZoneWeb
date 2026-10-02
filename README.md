@@ -65,6 +65,9 @@ Bot da kazandığında zaman zaman fatality dener.
 | KOR | Güçlü ama yavaş, yavaş enerji topu |
 | AYAZ | Dengeli, en hızlı enerji topu |
 | KUZGUN | Çevik ama vuruşları zayıf |
+| YILDIRIM | En hızlısı, yavaş ama ağır enerji topu |
+
+**Arenalar:** Zindan ve Tapınak. Her maç rastgele birinde oynanır; online maçta arenayı host seçer. Yeni arena eklemek için `js/config.js` içindeki `ARENAS` listesine renk ve doku paletiyle bir satır eklemen yeterli.
 
 Değerler `js/config.js` içindeki `CHARACTERS` listesinde. Yeni karakter eklemek için listeye bir satır eklemen yeterli, seçim ekranı otomatik güncellenir.
 

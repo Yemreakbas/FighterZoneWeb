@@ -13,11 +13,12 @@ import {
 
 const START_X = 2.5;
 
-/** `chars` are indices into CHARACTERS for player 1 and 2. */
-export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1]) {
+/** `chars` are indices into CHARACTERS for player 1 and 2; `arena` into ARENAS. */
+export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1], arena = 0) {
   const state = {
     names,
     chars,
+    arena,
     round: 1,
     timer: MATCH.roundTime,
     phase: 'intro',

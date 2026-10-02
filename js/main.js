@@ -1,5 +1,5 @@
 import { createStage } from './scene.js';
-import { CHARACTERS, MATCH, NET, TICK } from './config.js';
+import { ARENAS, CHARACTERS, MATCH, NET, TICK } from './config.js';
 import { createMatch } from './game.js';
 import { EMPTY_INPUT, createFighter } from './fighter.js';
 import { createBot } from './bot.js';
@@ -50,7 +50,9 @@ let paused = false;
  */
 function createLocalSession(chars, gatherInputs, onTick) {
   const names = chars.map((c) => CHARACTERS[c].name);
-  let match = createMatch(names, chars);
+  // Every match (and rematch) is fought in a random arena.
+  const randomArena = () => Math.floor(Math.random() * ARENAS.length);
+  let match = createMatch(names, chars, randomArena());
   let acc = 0;
   let prev = snapshotPositions(match.state);
   let events = [];
@@ -91,7 +93,7 @@ function createLocalSession(chars, gatherInputs, onTick) {
       return view();
     },
     rematch() {
-      match = createMatch(names, chars);
+      match = createMatch(names, chars, randomArena());
       acc = 0;
       prev = snapshotPositions(match.state);
     },
@@ -556,6 +558,7 @@ function frame(now) {
     const { state, events, positions } = session.update(dt);
     if (state) {
       applyCharacterColors(state.chars || [0, 1]);
+      stage.setArena(state.arena ?? 0);
       state.fighters.forEach((f, i) => views[i].update(f, dt, positions[i].x, positions[i].y));
       stage.updateCamera(dt, positions[0].x, positions[1].x);
       effects.syncProjectiles(state.projectiles || [], dt);
@@ -564,6 +567,7 @@ function frame(now) {
     }
   } else if (!session) {
     applyCharacterColors([0, 1]);
+    stage.setArena(0);
     effects.syncProjectiles([], dt);
     // Attract mode: idle fighters and a slow camera sway behind the menu.
     menuFighters.forEach((f, i) => views[i].update(f, dt, f.x, f.y));
