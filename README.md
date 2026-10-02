@@ -32,6 +32,8 @@ python -m http.server 8080
 | M | Sesi aç / kapat |
 | Esc | Menüye dön |
 
+Dokunmatik cihazlarda ekranda yön tuşları ve YUMRUK / TEKME / BLOK butonları çıkar.
+
 ## Yapı
 
 ```

@@ -198,6 +198,70 @@ h2 {
 }
 #net-status.warn { color: var(--accent); }
 
+/* ---------- Touch controls ---------- */
+.touch { display: none; }
+
+@media (pointer: coarse) {
+  html, body { touch-action: none; -webkit-touch-callout: none; }
+  .touch { display: block; }
+  .hint { display: none; } /* keyboard hints are meaningless on touch */
+  #net-status { bottom: auto; top: 96px; }
+}
+
+.tbtn {
+  position: absolute;
+  pointer-events: auto;
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text);
+  font: 700 22px 'Rajdhani', sans-serif;
+  background: rgba(255, 255, 255, 0.1);
+  border: 2px solid rgba(255, 255, 255, 0.28);
+  border-radius: 50%;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+.tbtn.on { background: rgba(255, 210, 63, 0.4); border-color: var(--accent-2); }
+
+/* D-pad: 3x3 grid of 56px cells anchored bottom-left. */
+.touch-pad {
+  position: absolute;
+  left: max(16px, env(safe-area-inset-left));
+  bottom: max(16px, env(safe-area-inset-bottom));
+  width: 168px;
+  height: 168px;
+}
+.touch-pad .tbtn { width: 56px; height: 56px; }
+.touch-pad .up { left: 56px; top: 0; }
+.touch-pad .left { left: 0; top: 56px; }
+.touch-pad .right { left: 112px; top: 56px; }
+.touch-pad .down { left: 56px; top: 112px; }
+
+.touch-actions {
+  position: absolute;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(16px, env(safe-area-inset-bottom));
+  width: 190px;
+  height: 160px;
+}
+.touch-actions .act { width: 72px; height: 72px; font-size: 13px; letter-spacing: 0.5px; }
+.touch-actions .punch { right: 88px; bottom: 0; background: rgba(255, 59, 59, 0.3); }
+.touch-actions .kick { right: 0; bottom: 30px; background: rgba(255, 122, 26, 0.3); }
+.touch-actions .block { right: 64px; bottom: 86px; width: 60px; height: 60px; }
+
+.tbtn.menu {
+  top: 88px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 36px;
+  height: 36px;
+  font-size: 16px;
+}
+
 /* Result screen sits on top of the frozen fight. */
 #result { background: rgba(7, 7, 13, 0.55); }
 

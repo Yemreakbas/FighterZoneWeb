@@ -44,6 +44,23 @@
     </div>
     <div id="announcer"></div>
     <div id="net-status"></div>
+
+    <!-- Touch controls (shown only on touch devices). data-hold = held key,
+         data-press = one-shot button; both feed the same input as the keyboard. -->
+    <div id="touch" class="touch">
+      <div class="touch-pad">
+        <button class="tbtn up" data-press="jump" aria-label="Zıpla">▲</button>
+        <button class="tbtn left" data-hold="left" aria-label="Sol">◀</button>
+        <button class="tbtn right" data-hold="right" aria-label="Sağ">▶</button>
+        <button class="tbtn down" data-hold="down" aria-label="Eğil">▼</button>
+      </div>
+      <div class="touch-actions">
+        <button class="tbtn act block" data-hold="block">BLOK</button>
+        <button class="tbtn act punch" data-press="punch">YUMRUK</button>
+        <button class="tbtn act kick" data-press="kick">TEKME</button>
+      </div>
+      <button class="tbtn menu" data-action="back" aria-label="Menü">✕</button>
+    </div>
   </div>
 
   <!-- ===== Main menu ===== -->
