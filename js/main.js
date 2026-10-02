@@ -246,7 +246,7 @@ function startClient(link, room) {
         return { state: null };
       }
       ui.setNetStatus(
-        frameState.stale ? 'Bağlantı yavaş...' : `Ping: ${Math.round(link.rtt)} ms`,
+        frameState.stale ? 'Bağlantı yavaş...' : `Ping: ${Math.round(link.rtt)} ms · Tampon: ${Math.round(interp.delay)} ms`,
         frameState.stale,
       );
       return frameState;

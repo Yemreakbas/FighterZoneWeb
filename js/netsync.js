@@ -60,9 +60,19 @@ function decodeState(s) {
 }
 
 /**
+ * Interpolation delay for a measured jitter (ms): one and a half packet
+ * intervals (so a packet is usually already waiting) plus a jitter margin,
+ * clamped to the configured range.
+ */
+export function targetDelay(jitterMs) {
+  const interval = NET.snapshotEvery * TICK * 1000;
+  return Math.max(NET.interpMinMs, Math.min(NET.interpMaxMs, interval * 1.5 + jitterMs * 3));
+}
+
+/**
  * Snapshot interpolation.
  *
- * The client renders the world NET.interpDelayMs in the past, so there is
+ * The client renders the world a short delay in the past, so there is
  * (almost) always a packet before and after the render time to blend
  * between. This hides network jitter at the cost of a small, constant delay.
  *
@@ -77,6 +87,8 @@ export function createInterpolator() {
   let pending = [];         // [{ time, event }] fired when render time passes
   let offset = null;
   let lastRecv = 0;
+  let jitter = 0;                        // smoothed |arrival lateness| in ms
+  let delay = NET.interpMaxMs;           // start safe, settle as jitter is measured
 
   function push(msg) {
     const state = decodeState(msg.s);
@@ -89,6 +101,8 @@ export function createInterpolator() {
     const sample = now - hostTime;
     if (offset === null || sample < offset) offset = sample;
     else offset += (sample - offset) * 0.002;
+    // Lateness relative to the fastest observed packet = network jitter.
+    jitter += (sample - offset - jitter) * 0.05;
     lastRecv = now;
 
     buffer.push({ time: hostTime, state });
@@ -103,7 +117,9 @@ export function createInterpolator() {
   function sample() {
     if (!buffer.length) return null;
     const now = performance.now();
-    const renderTime = now - offset - NET.interpDelayMs;
+    // Ease toward the target so render time never jumps visibly.
+    delay += (targetDelay(jitter) - delay) * 0.02;
+    const renderTime = now - offset - delay;
 
     // Drop packets that are entirely in the past (keep one as the "from").
     while (buffer.length > 2 && buffer[1].time <= renderTime) buffer.shift();
@@ -140,5 +156,5 @@ export function createInterpolator() {
     return { state, events, positions, stale: now - lastRecv > NET.staleMs };
   }
 
-  return { push, sample };
+  return { push, sample, get delay() { return delay; } };
 }

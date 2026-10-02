@@ -46,7 +46,7 @@ Tüm yollar göreli olduğu için oyun hangi klasörde olursa olsun çalışır.
 ## Modlar
 
 - **Tek oyunculu (Bot):** Bot her roundda biraz daha hızlı tepki veriyor, daha sık blokluyor ve daha çok kombo yapıyor.
-- **Oda Kur / Odaya Katıl (P2P):** Host 4 haneli bir kod alır, rakip bu kodla bağlanır. Simülasyon host'ta çalışır. Client sadece tuş girdisi gönderir ve host'tan gelen durumu ~100 ms gecikmeyle ara değerleyerek çizer.
+- **Oda Kur / Odaya Katıl (P2P):** Host 4 haneli bir kod alır, rakip bu kodla bağlanır. Simülasyon host'ta çalışır. Client sadece tuş girdisi gönderir ve host'tan gelen durumu bağlantı kalitesine göre 50-150 ms arası ayarlanan bir tamponla ara değerleyerek çizer.
 
 ## Karakterler
 

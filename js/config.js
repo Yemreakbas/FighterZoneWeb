@@ -124,7 +124,10 @@ export const NET = {
   idPrefix: 'fighterzone-v1-', // namespaces short room codes on the public PeerJS broker
   codeLength: 4,
   snapshotEvery: 2,     // host sends a state packet every N ticks (30 Hz)
-  interpDelayMs: 100,   // client renders this far in the past to smooth jitter
+  // The client renders the world slightly in the past to smooth jitter. The
+  // delay adapts to measured jitter within these bounds.
+  interpMinMs: 50,
+  interpMaxMs: 150,
   pingMs: 1000,
   timeoutMs: 6000,
   connectTimeoutMs: 10000,

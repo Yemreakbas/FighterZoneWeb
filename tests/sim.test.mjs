@@ -4,11 +4,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { ARENA, ATTACKS, MATCH, PHYSICS, TICK } from '../js/config.js';
+import { ARENA, ATTACKS, MATCH, NET, PHYSICS, TICK } from '../js/config.js';
 import { EMPTY_INPUT } from '../js/fighter.js';
 import { createMatch } from '../js/game.js';
 import { createBot } from '../js/bot.js';
-import { createInterpolator, encodeSnapshot } from '../js/netsync.js';
+import { createInterpolator, encodeSnapshot, targetDelay } from '../js/netsync.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -198,4 +198,45 @@ test('hostile field values are sanitised', () => {
   assert.equal(state.fighters[0].action, 'idle');
   assert.equal(state.fighters[0].hp, 0);
   assert.equal(state.projectiles[0].owner, 0);
+});
+
+// ---------------------------------------------------------------------------
+// Adaptive interpolation delay (fake clock)
+// ---------------------------------------------------------------------------
+
+test('target delay stays within the configured bounds', () => {
+  assert.equal(targetDelay(0), NET.interpMinMs);
+  assert.equal(targetDelay(1000), NET.interpMaxMs);
+  assert.ok(targetDelay(10) > targetDelay(0));
+});
+
+/** Feed 30 Hz snapshots with the given per-packet lateness; return settled delay. */
+function settleDelay(lateness) {
+  const realNow = performance.now;
+  let clock = 0;
+  performance.now = () => clock;
+  try {
+    const m = fightAt(-2, 2);
+    const interp = createInterpolator();
+    for (let i = 0; i < 600; i++) {
+      const tick = (i + 1) * NET.snapshotEvery;
+      clock = tick * TICK * 1000 + 40 + lateness(i); // 40 ms base latency
+      interp.push(JSON.parse(JSON.stringify(encodeSnapshot(m.state, tick, []))));
+      interp.sample();
+    }
+    return interp.delay;
+  } finally {
+    performance.now = realNow;
+  }
+}
+
+test('steady connection settles near the minimum delay', () => {
+  assert.ok(settleDelay(() => 0) < NET.interpMinMs + 5);
+});
+
+test('jittery connection raises the delay', () => {
+  const steady = settleDelay(() => 0);
+  const jittery = settleDelay((i) => (i % 3 === 0 ? 30 : 0));
+  assert.ok(jittery > steady + 20, `steady ${steady}, jittery ${jittery}`);
+  assert.ok(jittery <= NET.interpMaxMs);
 });
