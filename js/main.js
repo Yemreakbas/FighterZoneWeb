@@ -1,11 +1,13 @@
 import { createStage } from './scene.js';
-import { MATCH, TICK } from './config.js';
+import { MATCH, NET, TICK } from './config.js';
 import { createMatch } from './game.js';
 import { createFighter } from './fighter.js';
 import { createBot } from './bot.js';
 import { createKeyboard } from './input.js';
 import { createFighterView } from './fighterView.js';
 import { createEffects } from './effects.js';
+import { hostRoom, isValidCode, joinRoom } from './network.js';
+import { createInterpolator, encodeSnapshot } from './netsync.js';
 import * as ui from './ui.js';
 
 // ---------------------------------------------------------------------------
@@ -42,28 +44,42 @@ function createLocalSession(names, gatherInputs, onTick) {
   let match = createMatch(names);
   let acc = 0;
   let prev = snapshotPositions(match.state);
+  let events = [];
+
+  /** Run as many fixed ticks as `dt` covers. */
+  function advance(dt) {
+    acc += dt;
+    while (acc >= TICK) {
+      prev = snapshotPositions(match.state);
+      match.step(gatherInputs(match.state), TICK);
+      const tickEvents = match.drainEvents();
+      events.push(...tickEvents);
+      onTick?.(match.state, tickEvents);
+      acc -= TICK;
+    }
+  }
+
+  /** Render data: positions blended between the last two ticks. */
+  function view() {
+    const alpha = acc / TICK;
+    const positions = match.state.fighters.map((f, i) => {
+      const p = prev[i];
+      // A new round replaces the fighter objects; never lerp across that.
+      if (p.ref !== f) return { x: f.x, y: f.y };
+      return { x: p.x + (f.x - p.x) * alpha, y: p.y + (f.y - p.y) * alpha };
+    });
+    const out = events;
+    events = [];
+    return { state: match.state, events: out, positions };
+  }
 
   return {
     canRematch: true,
+    advance,
+    view,
     update(dt) {
-      acc += dt;
-      const events = [];
-      while (acc >= TICK) {
-        prev = snapshotPositions(match.state);
-        match.step(gatherInputs(match.state), TICK);
-        const tickEvents = match.drainEvents();
-        events.push(...tickEvents);
-        onTick?.(match.state, tickEvents);
-        acc -= TICK;
-      }
-      const alpha = acc / TICK;
-      const positions = match.state.fighters.map((f, i) => {
-        const p = prev[i];
-        // A new round replaces the fighter objects; never lerp across that.
-        if (p.ref !== f) return { x: f.x, y: f.y };
-        return { x: p.x + (f.x - p.x) * alpha, y: p.y + (f.y - p.y) * alpha };
-      });
-      return { state: match.state, events, positions };
+      advance(dt);
+      return view();
     },
     rematch() {
       match = createMatch(names);
@@ -77,6 +93,33 @@ function snapshotPositions(state) {
   return state.fighters.map((f) => ({ ref: f, x: f.x, y: f.y }));
 }
 
+/**
+ * Calls `fn(dt)` every `ms` from a Web Worker timer. Browsers throttle
+ * requestAnimationFrame (and main-thread timers) in background or unfocused
+ * tabs, which would freeze the host's authoritative simulation for both
+ * players; worker timers keep running. Falls back to setInterval.
+ */
+function createTicker(fn, ms) {
+  let last = performance.now();
+  const tick = () => {
+    const now = performance.now();
+    fn(Math.min((now - last) / 1000, 0.25));
+    last = now;
+  };
+  try {
+    const src = 'let id; onmessage = (e) => { clearInterval(id); if (e.data > 0) id = setInterval(() => postMessage(0), e.data); };';
+    const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+    const worker = new Worker(url);
+    URL.revokeObjectURL(url);
+    worker.onmessage = tick;
+    worker.postMessage(ms);
+    return { stop: () => worker.terminate() };
+  } catch {
+    const id = setInterval(tick, ms);
+    return { stop: () => clearInterval(id) };
+  }
+}
+
 function startSolo() {
   const bot = createBot(1);
   session = createLocalSession(
@@ -84,6 +127,167 @@ function startSolo() {
     (state) => [keyboard.sample(), bot.think(state, TICK)],
   );
   enterFight();
+}
+
+// ---- P2P host: authoritative simulation + snapshot broadcast -------------
+
+const HELD_KEYS = ['left', 'right', 'down', 'block'];
+const PRESS_MAP = { JUMP: 'jump', PUNCH: 'punch', KICK: 'kick' };
+
+function startHost(link, room) {
+  const remote = {
+    held: { left: false, right: false, down: false, block: false },
+    pressed: { jump: false, punch: false, kick: false },
+  };
+  const takeRemote = () => {
+    const out = { ...remote.held, ...remote.pressed };
+    remote.pressed.jump = remote.pressed.punch = remote.pressed.kick = false;
+    return out;
+  };
+
+  // Tick counter survives rematches so client-side time stays monotonic.
+  let tick = 0;
+  let outbox = [];
+  const local = createLocalSession(
+    ['OYUNCU 1', 'OYUNCU 2'],
+    () => [keyboard.sample(), takeRemote()],
+    (state, events) => {
+      tick++;
+      outbox.push(...events);
+      if (tick % NET.snapshotEvery === 0) {
+        link.send(encodeSnapshot(state, tick, outbox));
+        outbox = [];
+      }
+    },
+  );
+  // Simulation is driven by the worker clock; rAF only renders (see createTicker).
+  const ticker = createTicker(local.advance, 8);
+
+  session = {
+    canRematch: true,
+    update() {
+      ui.setNetStatus(`Ping: ${Math.round(link.rtt)} ms`);
+      return local.view();
+    },
+    rematch: local.rematch,
+    // The client is untrusted: only whitelisted input fields are accepted.
+    onData(msg) {
+      if (msg.t === 'held' && msg.keys && typeof msg.keys === 'object') {
+        for (const k of HELD_KEYS) remote.held[k] = msg.keys[k] === true;
+      } else if (typeof msg.input === 'string' && PRESS_MAP[msg.input]) {
+        remote.pressed[PRESS_MAP[msg.input]] = true;
+      }
+    },
+    dispose: () => {
+      ticker.stop();
+      room.cancel();
+    },
+  };
+  enterFight();
+}
+
+// ---- P2P client: send inputs, render interpolated host state --------------
+
+function startClient(link, room) {
+  const interp = createInterpolator();
+  let lastHeld = '';
+
+  session = {
+    canRematch: false,
+    update() {
+      const input = keyboard.sample();
+      const held = { left: input.left, right: input.right, down: input.down, block: input.block };
+      const heldKey = HELD_KEYS.map((k) => (held[k] ? 1 : 0)).join('');
+      if (heldKey !== lastHeld) {
+        link.send({ t: 'held', keys: held });
+        lastHeld = heldKey;
+      }
+      for (const [name, key] of Object.entries(PRESS_MAP)) {
+        if (input[key]) link.send({ input: name });
+      }
+
+      const frameState = interp.sample();
+      if (!frameState) {
+        ui.setNetStatus('Host bekleniyor...', true);
+        return { state: null };
+      }
+      ui.setNetStatus(
+        frameState.stale ? 'Bağlantı yavaş...' : `Ping: ${Math.round(link.rtt)} ms`,
+        frameState.stale,
+      );
+      return frameState;
+    },
+    onData(msg) {
+      if (msg.t === 's') interp.push(msg);
+    },
+    dispose: () => room.cancel(),
+  };
+  enterFight();
+}
+
+// ---- Lobby ----------------------------------------------------------------
+
+/** Pending hostRoom/joinRoom handle while in a lobby screen. */
+let pendingRoom = null;
+
+const CLOSE_TEXT = {
+  left: 'Rakip oyundan ayrıldı.',
+  closed: 'Bağlantı koptu.',
+  error: 'Bağlantı hatası.',
+  timeout: 'Bağlantı zaman aşımı: rakip yanıt vermiyor.',
+  full: 'Oda dolu.',
+};
+
+function netHandlers(onConnected, onError) {
+  return {
+    onConnected,
+    onError,
+    onData: (msg) => session?.onData?.(msg),
+    onClose: (reason) => {
+      pendingRoom = null;
+      leaveToMenu(CLOSE_TEXT[reason] || 'Bağlantı kapandı.');
+    },
+  };
+}
+
+function openHostLobby() {
+  ui.setRoomCode('----');
+  ui.setHostStatus('Oda kuruluyor...');
+  ui.showScreen('lobby-host');
+  try {
+    const room = hostRoom({
+      ...netHandlers(
+        (link) => { pendingRoom = null; startHost(link, room); },
+        (text) => { pendingRoom = null; ui.setHostStatus(text); },
+      ),
+      onCode: (code) => {
+        ui.setRoomCode(code);
+        ui.setHostStatus('Rakip bekleniyor... Kodu arkadaşına gönder.');
+      },
+    });
+    pendingRoom = room;
+  } catch (err) {
+    ui.setHostStatus(err.message);
+  }
+}
+
+function connectToRoom() {
+  if (pendingRoom) return;
+  const code = ui.getJoinCode();
+  if (!isValidCode(code)) {
+    ui.setJoinStatus('Geçerli bir oda kodu gir (4-6 rakam).');
+    return;
+  }
+  ui.setJoinStatus('Bağlanıyor...');
+  try {
+    const room = joinRoom(code, netHandlers(
+      (link) => { pendingRoom = null; startClient(link, room); },
+      (text) => { pendingRoom = null; ui.setJoinStatus(text); },
+    ));
+    pendingRoom = room;
+  } catch (err) {
+    ui.setJoinStatus(err.message);
+  }
 }
 
 function enterFight() {
@@ -94,6 +298,8 @@ function enterFight() {
 }
 
 function leaveToMenu(message = '') {
+  pendingRoom?.cancel();
+  pendingRoom = null;
   session?.dispose?.();
   session = null;
   ui.setNetStatus('');
@@ -125,7 +331,9 @@ const hud = {
     this.set('phase', state.phase, (phase) => {
       if (phase === 'over') {
         const name = state.names[state.winner];
-        ui.showResult(`${name} KAZANDI`, `${state.wins[0]} - ${state.wins[1]}`, !!session?.canRematch);
+        const score = `${state.wins[0]} - ${state.wins[1]}`;
+        const canRematch = !!session?.canRematch;
+        ui.showResult(`${name} KAZANDI`, canRematch ? score : `${score} · Rövanşı host başlatabilir`, canRematch);
       } else {
         ui.showScreen(null);
       }
@@ -152,16 +360,13 @@ function handleEvents(events) {
 // ---------------------------------------------------------------------------
 ui.bindActions({
   solo: startSolo,
-  host: () => {
-    ui.setRoomCode('----');
-    ui.setHostStatus('Yakında: P2P bağlantısı');
-    ui.showScreen('lobby-host');
-  },
+  host: openHostLobby,
   join: () => {
     ui.setJoinStatus('');
     ui.showScreen('lobby-join');
+    document.getElementById('join-code').focus();
   },
-  connect: () => ui.setJoinStatus('Yakında: P2P bağlantısı'),
+  connect: connectToRoom,
   rematch: () => {
     if (!session?.rematch) return;
     session.rematch();
@@ -172,7 +377,10 @@ ui.bindActions({
 });
 
 window.addEventListener('keydown', (e) => {
-  if (e.code === 'Escape' && session) leaveToMenu();
+  if (e.code === 'Escape' && (session || pendingRoom)) leaveToMenu();
+});
+document.getElementById('join-code').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') connectToRoom();
 });
 
 // ---------------------------------------------------------------------------

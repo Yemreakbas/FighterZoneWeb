@@ -14,24 +14,38 @@ python -m http.server 8080
 # http://localhost:8080
 ```
 
+## Modlar
+
+- **Tek oyunculu (Bot):** Bot her roundda biraz daha hızlı tepki veriyor, daha sık blokluyor ve daha çok kombo yapıyor.
+- **Oda Kur / Odaya Katıl (P2P):** Host 4 haneli bir kod alır, rakip bu kodla bağlanır. Simülasyon host'ta çalışır. Client sadece tuş girdisi gönderir ve host'tan gelen durumu ~100 ms gecikmeyle ara değerleyerek çizer.
+
 ## Kontroller
 
 | Tuş | Aksiyon |
 |-----|---------|
-| A / D | Sol / Sağ |
-| W | Zıpla |
-| S | Eğil |
+| A / D (← / →) | Sol / Sağ |
+| W (↑ / Space) | Zıpla |
+| S (↓) | Eğil |
 | J | Yumruk |
 | K | Tekme |
 | L | Blok |
+| Esc | Menüye dön |
 
 ## Yapı
 
 ```
-index.html      Giriş noktası, UI overlay, import map
-style.css       Menü + HUD stilleri
-js/config.js    Ayar sabitleri
-js/scene.js     Renderer, kamera, ışıklar, arena
-js/ui.js        Ekran yönetimi, can barları, anons
-js/main.js      Boot + oyun döngüsü
+index.html         Giriş noktası, UI overlay, import map
+style.css          Menü + HUD stilleri
+js/config.js       Ayar sabitleri (fizik, saldırılar, bot, ağ)
+js/main.js         Boot, oturumlar (solo / host / client), oyun döngüsü
+js/game.js         Maç akışı: round, süre, K.O.
+js/fighter.js      Dövüşçü simülasyonu ve AABB hitbox/hurtbox
+js/bot.js          Yapay zeka rakip
+js/input.js        Klavye girdisi
+js/fighterView.js  Primitive model + prosedürel animasyon
+js/effects.js      Vuruş kıvılcımları
+js/scene.js        Renderer, kamera, ışıklar, arena
+js/ui.js           Ekran yönetimi, can barları, anons
+js/network.js      PeerJS host/join, heartbeat
+js/netsync.js      Durum paketleri ve client interpolasyonu
 ```
