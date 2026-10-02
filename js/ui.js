@@ -2,13 +2,13 @@
 
 const $ = (id) => document.getElementById(id);
 
-const SCREENS = ['menu', 'select', 'lobby-host', 'lobby-join', 'result'];
+const SCREENS = ['menu', 'select', 'lobby-host', 'lobby-join', 'result', 'pause'];
 
 /** Show one overlay screen, or `null` for the bare in-fight HUD. */
 export function showScreen(name) {
   for (const id of SCREENS) $(id).classList.toggle('hidden', id !== name);
-  // The result screen is drawn over the HUD so the final health stays visible.
-  $('hud').classList.toggle('hidden', name !== null && name !== 'result');
+  // Result and pause are drawn over the HUD so the fight stays visible.
+  $('hud').classList.toggle('hidden', name !== null && name !== 'result' && name !== 'pause');
 }
 
 export function showResult(title, detail, canRematch) {
@@ -16,6 +16,11 @@ export function showResult(title, detail, canRematch) {
   $('result-detail').textContent = detail;
   $('rematch-btn').classList.toggle('hidden', !canRematch);
   showScreen('result');
+}
+
+export function showPause(note) {
+  $('pause-note').textContent = note;
+  showScreen('pause');
 }
 
 export function setWins(index, wins) {

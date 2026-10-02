@@ -41,7 +41,7 @@ Değerler `js/config.js` içindeki `CHARACTERS` listesinde. Yeni karakter ekleme
 | U | Özel hareket (enerji topu) |
 | L | Blok |
 | M | Sesi aç / kapat |
-| Esc | Menüye dön |
+| Esc | Duraklat (online maçta oyun arka planda sürer) |
 
 Dokunmatik cihazlarda ekranda yön tuşları ve YUMRUK / TEKME / ÖZEL / BLOK butonları çıkar.
 

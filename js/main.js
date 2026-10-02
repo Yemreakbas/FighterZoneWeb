@@ -1,7 +1,7 @@
 import { createStage } from './scene.js';
 import { CHARACTERS, MATCH, NET, TICK } from './config.js';
 import { createMatch } from './game.js';
-import { createFighter } from './fighter.js';
+import { EMPTY_INPUT, createFighter } from './fighter.js';
 import { createBot } from './bot.js';
 import { createKeyboard } from './input.js';
 import { createFighterView } from './fighterView.js';
@@ -31,6 +31,12 @@ const menuFighters = [createFighter(-1.6, 1), createFighter(1.6, -1)];
  * optional `rematch()` / `dispose()` and a `canRematch` flag.
  */
 let session = null;
+
+/**
+ * Pause menu open. Only solo sessions (`pausable`) actually freeze; an
+ * online match is host-authoritative and keeps running behind the menu.
+ */
+let paused = false;
 
 // ---------------------------------------------------------------------------
 // Sessions
@@ -153,6 +159,7 @@ function startSolo() {
     [myChar, otherChar(myChar)],
     (state) => [keyboard.sample(), bot.think(state, TICK)],
   );
+  session.pausable = true;
   enterFight();
 }
 
@@ -177,7 +184,7 @@ function startHost(link, room, chars) {
   let outbox = [];
   const local = createLocalSession(
     chars,
-    () => [keyboard.sample(), takeRemote()],
+    () => [playerInput(), takeRemote()],
     (state, events) => {
       tick++;
       outbox.push(...events);
@@ -222,7 +229,7 @@ function startClient(link, room) {
   session = {
     canRematch: false,
     update() {
-      const input = keyboard.sample();
+      const input = playerInput();
       const held = { left: input.left, right: input.right, down: input.down, block: input.block };
       const heldKey = HELD_KEYS.map((k) => (held[k] ? 1 : 0)).join('');
       if (heldKey !== lastHeld) {
@@ -350,7 +357,27 @@ function openJoinLobby() {
   document.getElementById('join-code').focus();
 }
 
+/** Local player's input; neutral while the pause menu is open (online play keeps running). */
+function playerInput() {
+  const input = keyboard.sample();
+  return paused ? { ...EMPTY_INPUT } : input;
+}
+
+function pause() {
+  if (!session || paused || hud.last.phase === 'over') return;
+  paused = true;
+  ui.showPause(session.pausable ? '' : 'Online maç durdurulamaz, oyun arka planda sürüyor.');
+}
+
+function resume() {
+  if (!paused) return;
+  paused = false;
+  keyboard.sample(); // drop presses made while the menu was open
+  ui.showScreen(null);
+}
+
 function leaveToMenu(message = '') {
+  paused = false;
   pendingMode = null;
   awaitingHello = null;
   pendingRoom?.cancel();
@@ -385,11 +412,12 @@ const hud = {
     this.set('wins1', state.wins[1], (v) => ui.setWins(1, v));
     this.set('phase', state.phase, (phase) => {
       if (phase === 'over') {
+        paused = false;
         const name = state.names[state.winner];
         const score = `${state.wins[0]} - ${state.wins[1]}`;
         const canRematch = !!session?.canRematch;
         ui.showResult(`${name} KAZANDI`, canRematch ? score : `${score} · Rövanşı host başlatabilir`, canRematch);
-      } else {
+      } else if (!paused) {
         ui.showScreen(null);
       }
     });
@@ -429,8 +457,11 @@ ui.bindActions({
   join: () => openSelect('join'),
   pick: pickCharacter,
   connect: connectToRoom,
+  pause,
+  resume,
   rematch: () => {
     if (!session?.rematch) return;
+    paused = false;
     session.rematch();
     hud.reset();
     ui.showScreen(null);
@@ -439,12 +470,19 @@ ui.bindActions({
 });
 
 window.addEventListener('keydown', (e) => {
-  if (e.code === 'Escape' && (session || pendingRoom || pendingMode)) leaveToMenu();
+  if (e.code === 'Escape') {
+    if (session) (paused ? resume() : pause());
+    else if (pendingRoom || pendingMode) leaveToMenu();
+  }
   if (e.code === 'KeyM' && !e.target.matches?.('input')) {
     const text = sound.toggleMute() ? 'SES KAPALI' : 'SES AÇIK';
     if (session) ui.announce(text, 800);
     else ui.setMenuStatus(text);
   }
+});
+// Switching tabs mid-fight pauses solo play instead of letting the bot win.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && session?.pausable) pause();
 });
 // Audio may only start after a user gesture.
 window.addEventListener('pointerdown', sound.unlock);
@@ -477,7 +515,7 @@ function frame(now) {
   const dt = Math.min((now - last) / 1000, 0.1);
   last = now;
 
-  if (session) {
+  if (session && !(paused && session.pausable)) {
     const { state, events, positions } = session.update(dt);
     if (state) {
       applyCharacterColors(state.chars || [0, 1]);
@@ -487,7 +525,7 @@ function frame(now) {
       hud.sync(state);
       handleEvents(events);
     }
-  } else {
+  } else if (!session) {
     applyCharacterColors([0, 1]);
     effects.syncProjectiles([], dt);
     // Attract mode: idle fighters and a slow camera sway behind the menu.
