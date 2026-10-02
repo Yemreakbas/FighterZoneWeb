@@ -4,6 +4,7 @@ import { ARENA, ATTACKS, BODY, CHARACTERS, CROUCH_ATTACK_DROP, INPUT_BUFFER, MAT
 // the host can serialize it straight into network snapshots. No Three.js here.
 //
 // Actions: idle | walk | crouch | jump | block | punch | kick | special | hit | ko | win
+//          | dazed (FINISH HIM) | fatality
 
 export const EMPTY_INPUT = Object.freeze({
   left: false, right: false, down: false, block: false,
@@ -29,7 +30,7 @@ export function createFighter(x, facing, char = 0) {
   };
 }
 
-const BUSY = new Set(['punch', 'kick', 'special', 'hit', 'ko', 'win']);
+const BUSY = new Set(['punch', 'kick', 'special', 'hit', 'ko', 'win', 'dazed', 'fatality']);
 
 export function isAttacking(f) {
   return f.action === 'punch' || f.action === 'kick';
@@ -144,7 +145,7 @@ function control(f, input, opp) {
 }
 
 function integrate(f, dt) {
-  if (f.action === 'hit' || f.action === 'ko' || f.action === 'block') {
+  if (f.action === 'hit' || f.action === 'ko' || f.action === 'block' || f.action === 'dazed') {
     f.vx *= Math.exp(-PHYSICS.knockbackDecay * dt);
   }
 

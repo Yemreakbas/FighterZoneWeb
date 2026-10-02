@@ -342,3 +342,73 @@ test('hostile authority packets are sanitised', () => {
   assert.equal(auth.me.char, 0);
   assert.equal(auth.hitstop, 0);
 });
+
+// ---------------------------------------------------------------------------
+// FINISH HIM / FATALITY
+// ---------------------------------------------------------------------------
+
+/** Player 1 one hit away from winning the match; returns events after the KO. */
+function matchPoint() {
+  const m = fightAt(0, 1);
+  m.state.wins = [1, 0];
+  m.state.fighters[1].hp = 1;
+  const ev = run(m, 30, press('punch'));
+  return { m, ev };
+}
+
+test('the match-deciding K.O. opens the FINISH HIM window', () => {
+  const { m, ev } = matchPoint();
+  assert.equal(m.state.phase, 'finish');
+  assert.equal(m.state.fighters[1].action, 'dazed');
+  assert.ok(ev.some((e) => e.type === 'announce' && e.text === 'FINISH HIM!'));
+  assert.deepEqual(m.state.wins, [2, 0]);
+});
+
+test('a non-deciding K.O. does not open the finish window', () => {
+  const m = fightAt(0, 1);
+  m.state.fighters[1].hp = 1;
+  run(m, 30, press('punch'));
+  assert.equal(m.state.phase, 'roundEnd');
+});
+
+test('a special move during FINISH HIM is a FATALITY', () => {
+  const { m } = matchPoint();
+  m.state.fighters[0].x = -2; // projectile range
+  const ev = run(m, 90, press('special'));
+  assert.ok(ev.some((e) => e.type === 'fatality' && e.target === 1));
+  assert.equal(m.state.fighters[1].action, 'fatality');
+  run(m, 60 * 6);
+  assert.equal(m.state.phase, 'over');
+  assert.equal(m.state.winner, 0);
+});
+
+test('normal hits only stagger the dazed loser; the timeout drops them', () => {
+  // Mashing straight after the K.O. must not waste the finish.
+  const melee = matchPoint().m;
+  const ev = run(melee, 60, (t) => [t % 6 === 0 ? { punch: true } : { right: true }, {}]);
+  assert.ok(!ev.some((e) => e.type === 'fatality'));
+  assert.equal(melee.state.phase, 'finish');
+  assert.equal(melee.state.fighters[1].action, 'dazed');
+
+  const idle = matchPoint().m;
+  run(idle, 60 * 5);
+  assert.equal(idle.state.fighters[1].action, 'ko');
+  run(idle, 60 * 4);
+  assert.equal(idle.state.phase, 'over');
+});
+
+test('only the winner can act during FINISH HIM', () => {
+  const { m } = matchPoint();
+  const x = m.state.fighters[1].x;
+  run(m, 30, () => [{}, { left: true, punch: true }]);
+  assert.equal(m.state.fighters[1].x, x);
+  assert.equal(m.state.fighters[1].action, 'dazed');
+});
+
+test('a fatality is still possible after mashing into the dazed loser', () => {
+  const { m } = matchPoint();
+  run(m, 30, (t) => [t % 7 === 0 ? { punch: true } : { right: true }, {}]);
+  run(m, 30, () => [{ left: true }, {}]);
+  const ev = run(m, 90, press('special'));
+  assert.ok(ev.some((e) => e.type === 'fatality'));
+});

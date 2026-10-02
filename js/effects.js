@@ -94,5 +94,66 @@ export function createEffects(scene) {
     o.light.color.setHex(color);
   }
 
-  return { spark, update, syncProjectiles, setProjectileColor };
+  // Fatality: the body bursts into tumbling pieces that bounce and settle.
+  const PIECES = 18;
+  const PIECE_LIFE = 5;
+  const pieceGeo = new THREE.BoxGeometry(1, 1, 1);
+  const pieces = Array.from({ length: PIECES }, () => {
+    const mesh = new THREE.Mesh(pieceGeo, new THREE.MeshStandardMaterial({ roughness: 0.7 }));
+    mesh.castShadow = true;
+    mesh.visible = false;
+    scene.add(mesh);
+    return { mesh, vel: new THREE.Vector3(), spin: new THREE.Vector3(), age: PIECE_LIFE };
+  });
+  const SKIN = 0xd9a37a;
+
+  function explode(x, y, color) {
+    pieces.forEach((p, i) => {
+      p.age = 0;
+      p.mesh.visible = true;
+      p.mesh.material.color.setHex(i % 3 === 0 ? SKIN : color);
+      const size = 0.12 + Math.random() * 0.22;
+      p.mesh.scale.set(size, size * (0.6 + Math.random()), size);
+      p.mesh.position.set(x + (Math.random() - 0.5) * 0.5, y + 0.4 + Math.random() * 1.4, (Math.random() - 0.5) * 0.4);
+      p.vel.set((Math.random() - 0.5) * 9, 4 + Math.random() * 7, (Math.random() - 0.5) * 5);
+      p.spin.set(Math.random() * 12, Math.random() * 12, Math.random() * 12);
+    });
+    spark(x, y + 1.2, { heavy: true });
+    flashLight.intensity = 40;
+  }
+
+  function updatePieces(dt) {
+    for (const p of pieces) {
+      if (!p.mesh.visible) continue;
+      p.age += dt;
+      if (p.age >= PIECE_LIFE) { p.mesh.visible = false; continue; }
+      p.vel.y -= 25 * dt;
+      p.mesh.position.addScaledVector(p.vel, dt);
+      p.mesh.rotation.x += p.spin.x * dt;
+      p.mesh.rotation.y += p.spin.y * dt;
+      const floor = p.mesh.scale.y / 2;
+      if (p.mesh.position.y < floor) {
+        // Bounce with heavy damping, then come to rest.
+        p.mesh.position.y = floor;
+        p.vel.y = Math.abs(p.vel.y) * 0.3;
+        p.vel.x *= 0.6;
+        p.vel.z *= 0.6;
+        p.spin.multiplyScalar(0.5);
+      }
+    }
+  }
+
+  /** Remove leftover pieces (new round / leaving the match). */
+  function clearPieces() {
+    for (const p of pieces) p.mesh.visible = false;
+  }
+
+  return {
+    spark,
+    update(dt) { update(dt); updatePieces(dt); },
+    syncProjectiles,
+    setProjectileColor,
+    explode,
+    clearPieces,
+  };
 }

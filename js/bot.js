@@ -16,6 +16,7 @@ export function createBot(index) {
   let queued = [];       // [{ type, at }] scheduled button presses (combos)
   let lastOpp = { action: 'idle', t: 0 };
   let reactedToProjectile = false; // one dodge decision per incoming projectile
+  let finishPlan = null;           // { fatality, thrown } while winning a FINISH HIM
 
   const rand = Math.random;
 
@@ -71,6 +72,9 @@ export function createBot(index) {
     const input = { ...EMPTY_INPUT };
     const me = state.fighters[index];
     const opp = state.fighters[1 - index];
+
+    if (state.phase === 'finish') return finish(state, me, opp, input);
+    finishPlan = null;
 
     if (state.phase !== 'fight' || me.action === 'ko') {
       queued = [];
@@ -130,6 +134,27 @@ export function createBot(index) {
       case 'crouch':
         input.down = true;
         break;
+    }
+    return input;
+  }
+
+  /**
+   * FINISH HIM as the winner: harder bots go for the fatality more often.
+   * Line up at projectile range and throw a single special.
+   */
+  function finish(state, me, opp, input) {
+    if (state.roundWinner !== index) return input;
+    const lvl = BOT_LEVELS[Math.min(state.round - 1, BOT_LEVELS.length - 1)];
+    finishPlan ??= { fatality: rand() < 0.35 + lvl.aggression * 0.5, thrown: false };
+    if (!finishPlan.fatality || finishPlan.thrown) return input;
+
+    const dist = Math.abs(opp.x - me.x);
+    const toward = Math.sign(opp.x - me.x) || me.facing;
+    if (dist > 4) input[toward > 0 ? 'right' : 'left'] = true;
+    else if (dist < 2) input[toward > 0 ? 'left' : 'right'] = true;
+    else if (me.grounded && (me.action === 'idle' || me.action === 'walk')) {
+      input.special = true;
+      finishPlan.thrown = true;
     }
     return input;
   }

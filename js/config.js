@@ -103,6 +103,8 @@ export const ROUND_FLOW = {
   introAnnounce: 1.1, // "ROUND n" is shown, then "FIGHT!"
   introTotal: 1.7,
   koToWinPose: 1.0,
+  finishTime: 4.0,    // FINISH HIM window before the loser collapses on their own
+  fatalityHold: 1.5,  // extra time on the round-end screen after a fatality
   roundEndTotal: 3.0,
 };
 

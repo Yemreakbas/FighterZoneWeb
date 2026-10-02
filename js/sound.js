@@ -79,6 +79,15 @@ const SOUNDS = {
     noise(0.35, 900, 0.35, 'bandpass');
     tone(220, 520, 0.3, 0.18, 'sawtooth');
   },
+  finish() {
+    tone(110, 55, 1.2, 0.5, 'sawtooth');
+    tone(82, 41, 1.4, 0.6);
+  },
+  fatality() {
+    noise(0.9, 700, 1);
+    tone(70, 20, 1.1, 1);
+    tone(160, 40, 0.5, 0.5, 'square', 0.05);
+  },
   ko() {
     tone(95, 28, 0.7, 1);
     noise(0.45, 500, 0.6);

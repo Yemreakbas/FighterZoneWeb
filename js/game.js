@@ -1,6 +1,6 @@
 import { ARENA, HITSTOP, MATCH, ROUND_FLOW } from './config.js';
 import {
-  EMPTY_INPUT, applyContact, bufferPress, createFighter, findHit, overlaps, projectileBox,
+  EMPTY_INPUT, applyContact, bufferPress, createFighter, findHit, hurtbox, overlaps, projectileBox,
   projectileHit, separate, spawnProjectile, stepFighter,
 } from './fighter.js';
 
@@ -8,7 +8,8 @@ import {
 // Runs on the host (or locally in solo mode) at a fixed tick. Everything the
 // renderer or a remote client needs is in `state` plus the drained events.
 //
-// Phases: intro -> fight -> roundEnd -> (intro | over)
+// Phases: intro -> fight -> [finish] -> roundEnd -> (intro | over)
+// `finish` is the FINISH HIM window after the match-deciding K.O.
 
 const START_X = 2.5;
 
@@ -68,6 +69,30 @@ export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1]) {
     emit({ type: 'announce', text, ms: 1800 });
   }
 
+  /** Match-deciding K.O.: the loser stays up, dazed, for FINISH HIM. */
+  function startFinish(winner) {
+    const loser = state.fighters[1 - winner];
+    loser.action = 'dazed';
+    loser.t = 0;
+    loser.hp = 0;
+    loser.vx = 0;
+    loser.buffer = null;
+    state.fighters[winner].buffer = null; // no stray mashed attack into the finish
+    state.wins[winner]++;
+    state.roundWinner = winner;
+    state.phase = 'finish';
+    state.phaseT = 0;
+    state.projectiles = [];
+    emit({ type: 'finish', winner });
+    emit({ type: 'announce', text: 'FINISH HIM!', ms: 2500, style: 'blood' });
+  }
+
+  /** Leave the finish window into the normal round-end flow (wins already counted). */
+  function closeFinish(extraHold) {
+    state.phase = 'roundEnd';
+    state.phaseT = -extraHold; // negative start delays the win pose/announce
+  }
+
   function knockOut(f) {
     f.action = 'ko';
     f.t = 0;
@@ -88,10 +113,12 @@ export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1]) {
     const prevPhaseT = state.phaseT;
     state.phaseT += dt;
 
-    // Players only control their fighters during the fight phase.
+    // Players control their fighters during the fight; in the finish window
+    // only the winner moves.
     const live = state.phase === 'fight';
-    stepFighter(a, live ? inputs[0] : EMPTY_INPUT, b, dt);
-    stepFighter(b, live ? inputs[1] : EMPTY_INPUT, a, dt);
+    const controls = (i) => live || (state.phase === 'finish' && i === state.roundWinner);
+    stepFighter(a, controls(0) ? inputs[0] : EMPTY_INPUT, b, dt);
+    stepFighter(b, controls(1) ? inputs[1] : EMPTY_INPUT, a, dt);
     separate(a, b);
     stepProjectiles(dt, live);
 
@@ -116,13 +143,42 @@ export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1]) {
       state.timer = Math.max(0, state.timer - dt);
       const koA = a.hp <= 0;
       const koB = b.hp <= 0;
-      if (koA || koB) {
+      const winner = koA && koB ? 2 : koA ? 1 : 0;
+      if ((koA !== koB) && state.wins[winner] + 1 >= MATCH.roundsToWin) {
+        startFinish(winner);
+      } else if (koA || koB) {
         if (koA) knockOut(a);
         if (koB) knockOut(b);
         emit({ type: 'ko' });
-        endRound(koA && koB ? 2 : koA ? 1 : 0, koA && koB ? 'DOUBLE K.O.' : 'K.O.');
+        endRound(winner, koA && koB ? 'DOUBLE K.O.' : 'K.O.');
       } else if (state.timer <= 0) {
         endRound(a.hp === b.hp ? 2 : a.hp > b.hp ? 0 : 1, 'TIME');
+      }
+    } else if (state.phase === 'finish') {
+      // A special move (projectile) on the dazed loser is a FATALITY. Normal
+      // hits only make them stagger: players keep mashing after a K.O. and
+      // must not waste the finish by accident. Time running out drops them.
+      const w = state.roundWinner;
+      const winner = state.fighters[w];
+      const loser = state.fighters[1 - w];
+      const proj = state.projectiles.find((p) => p.owner === w && overlaps(projectileBox(p), hurtbox(loser)));
+      const melee = !proj && findHit(winner, loser);
+      if (proj) {
+        proj.life = 0;
+        loser.action = 'fatality';
+        loser.t = 0;
+        loser.vx = 0;
+        emit({ type: 'fatality', target: 1 - w, x: loser.x, y: loser.y });
+        emit({ type: 'announce', text: 'FATALITY', ms: 2400, style: 'blood' });
+        closeFinish(ROUND_FLOW.fatalityHold);
+      } else if (melee) {
+        winner.attackHit = true;
+        emit({ type: 'hit', blocked: false, heavy: melee.move === 'kick', x: melee.x, y: melee.y, target: 1 - w });
+        loser.vx = winner.facing * 2.5; // stagger back, still dazed
+      }
+      if (state.phase === 'finish' && state.phaseT >= ROUND_FLOW.finishTime) {
+        knockOut(loser);
+        closeFinish(0);
       }
     } else if (state.phase === 'roundEnd') {
       const w = state.roundWinner;

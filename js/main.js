@@ -161,6 +161,7 @@ function startSolo() {
     (state) => [keyboard.sample(), bot.think(state, TICK)],
   );
   session.pausable = true;
+  session.localIndex = 0;
   enterFight();
 }
 
@@ -191,6 +192,7 @@ function startHost(link, room, chars) {
 
   session = {
     canRematch: true,
+    localIndex: 0,
     update() {
       ui.setNetStatus(`Ping: ${Math.round(link.rtt)} ms`);
       return local.view();
@@ -217,6 +219,7 @@ function startClient(link, room) {
 
   session = {
     canRematch: false,
+    localIndex: 1,
     update(dt) {
       // Fixed-tick input: each tick is numbered, sent, and predicted locally
       // so our own fighter reacts without waiting for the host.
@@ -379,6 +382,7 @@ function resume() {
 }
 
 function leaveToMenu(message = '') {
+  effects.clearPieces();
   paused = false;
   pendingMode = null;
   awaitingHello = null;
@@ -435,8 +439,11 @@ function handleEvents(events) {
   for (const e of events) {
     if (e.type === 'announce') {
       const text = String(e.text ?? '').slice(0, 32);
-      ui.announce(text, Math.min(num(e.ms) || 1200, 5000));
-      if (text.startsWith('ROUND')) sound.play('round');
+      ui.announce(text, Math.min(num(e.ms) || 1200, 5000), e.style === 'blood' ? 'blood' : '');
+      if (text.startsWith('ROUND')) {
+        sound.play('round');
+        effects.clearPieces();
+      }
       else if (text === 'FIGHT!') sound.play('fight');
     } else if (e.type === 'hit') {
       sound.play(e.blocked ? 'block' : e.heavy ? 'heavy' : 'hit');
@@ -452,6 +459,14 @@ function handleEvents(events) {
       stage.shake(0.5);
     } else if (e.type === 'over') {
       sound.play('victory');
+    } else if (e.type === 'finish') {
+      sound.play('finish');
+      if (e.winner === session?.localIndex) ui.showHint('ÖZEL HAREKETLE BİTİR!  (U / ○ / ÖZEL)', 3500);
+    } else if (e.type === 'fatality') {
+      sound.play('fatality');
+      stage.shake(0.8);
+      const target = e.target === 0 || e.target === 1 ? e.target : 1;
+      effects.explode(num(e.x), num(e.y), shownColors[target]);
     }
   }
 }
@@ -470,6 +485,7 @@ ui.bindActions({
   rematch: () => {
     if (!session?.rematch) return;
     paused = false;
+    effects.clearPieces();
     session.rematch();
     hud.reset();
     ui.showScreen(null);
@@ -503,6 +519,7 @@ const darken = (hex, k) =>
   (Math.round(((hex >> 16) & 255) * k) << 16) | (Math.round(((hex >> 8) & 255) * k) << 8) | Math.round((hex & 255) * k);
 
 let shownChars = '';
+const shownColors = [CHARACTERS[0].color, CHARACTERS[1].color];
 function applyCharacterColors(chars) {
   const key = chars.join(',');
   if (key === shownChars) return;
@@ -513,6 +530,7 @@ function applyCharacterColors(chars) {
     // Mirror match: darken player 2 so the fighters stay distinguishable.
     if (mirror && i === 1) color = darken(color, 0.5);
     views[i].setColor(color);
+    shownColors[i] = color;
     effects.setProjectileColor(i, color);
   });
 }

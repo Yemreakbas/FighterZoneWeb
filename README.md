@@ -48,6 +48,16 @@ Tüm yollar göreli olduğu için oyun hangi klasörde olursa olsun çalışır.
 - **Tek oyunculu (Bot):** Bot her roundda biraz daha hızlı tepki veriyor, daha sık blokluyor ve daha çok kombo yapıyor.
 - **Oda Kur / Odaya Katıl (P2P):** Host 4 haneli bir kod alır, rakip bu kodla bağlanır. Simülasyon host'ta çalışır. Client her karede numaralı girdisini gönderir ve kendi karakterini anında yerelde tahmin eder (client prediction). Host'tan gelen durumla karşılaştırıp gerekirse yumuşakça düzeltir. Rakibi ise bağlantı kalitesine göre 50-150 ms arası ayarlanan bir tamponla ara değerleyerek çizer.
 
+## FINISH HIM
+
+Maçı belirleyen K.O.'da rakip yere düşmez, sersemlemiş halde ayakta kalır ve **FINISH HIM!** anonsu gelir. Kazananın 4 saniyesi var:
+
+- **Özel hareket** (enerji topu) isabet ederse **FATALITY**: rakip parçalara ayrılır.
+- Normal vuruşlar rakibi sadece sendeletir, yani K.O.'dan sonra tuşlara basmaya devam etsen de şansını kaybetmezsin.
+- Süre dolarsa rakip kendiliğinden yere yığılır.
+
+Bot da kazandığında zaman zaman fatality dener.
+
 ## Karakterler
 
 | Karakter | Özellik |

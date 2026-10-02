@@ -77,6 +77,8 @@ export function createFighterView(scene, color) {
   function update(f, dt, x, y) {
     animTime += dt;
     root.position.set(x, y, 0);
+    // After a fatality the body is replaced by flying pieces (effects.js).
+    root.visible = f.action !== 'fatality';
 
     // Turn mostly sideways but slightly toward the camera for readability.
     const targetYaw = f.facing * Math.PI / 2 * 0.78;
@@ -241,6 +243,17 @@ function computePose(f, time) {
       p.farHip = -0.05; p.farKnee = 0.1;
       break;
     }
+
+    case 'dazed':
+      // Swaying on the spot, arms hanging, head down.
+      p.hipsY = 0.9;
+      p.spineX = 0.45 + Math.sin(time * 2.2) * 0.08;
+      p.spineY = Math.sin(time * 1.6) * 0.35;
+      p.headX = 0.5;
+      p.nearShoulder = 0.15; p.nearElbow = -0.2;
+      p.farShoulder = 0.05; p.farElbow = -0.3;
+      p.nearHip = -0.25; p.nearKnee = 0.5; p.farHip = 0.1; p.farKnee = 0.45;
+      break;
 
     case 'win':
       p.farShoulder = -2.9; p.farElbow = -0.3 + Math.sin(time * 8) * 0.15;

@@ -56,12 +56,23 @@ export function setRound(n) { $('round-label').textContent = `ROUND ${n}`; }
 export function setTimer(seconds) { $('timer').textContent = String(Math.ceil(seconds)); }
 
 let announceTimeout = 0;
-export function announce(text, ms = 1200) {
+/** `style` 'blood' renders the MK-style red variant (FINISH HIM, FATALITY). */
+export function announce(text, ms = 1200, style = '') {
   const el = $('announcer');
   el.textContent = text;
+  el.classList.toggle('blood', style === 'blood');
   el.classList.add('show');
   clearTimeout(announceTimeout);
   if (ms > 0) announceTimeout = setTimeout(() => el.classList.remove('show'), ms);
+}
+
+let hintTimeout = 0;
+export function showHint(text, ms) {
+  const el = $('hint');
+  el.textContent = text;
+  el.classList.add('show');
+  clearTimeout(hintTimeout);
+  hintTimeout = setTimeout(() => el.classList.remove('show'), ms);
 }
 
 const comboTimeouts = [0, 0];
