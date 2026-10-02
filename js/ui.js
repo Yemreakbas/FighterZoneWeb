@@ -2,13 +2,34 @@
 
 const $ = (id) => document.getElementById(id);
 
-const SCREENS = ['menu', 'lobby-host', 'lobby-join'];
+const SCREENS = ['menu', 'lobby-host', 'lobby-join', 'result'];
 
+/** Show one overlay screen, or `null` for the bare in-fight HUD. */
 export function showScreen(name) {
   for (const id of SCREENS) $(id).classList.toggle('hidden', id !== name);
-  $('hud').classList.toggle('hidden', name !== null);
+  // The result screen is drawn over the HUD so the final health stays visible.
+  $('hud').classList.toggle('hidden', name !== null && name !== 'result');
 }
 
+export function showResult(title, detail, canRematch) {
+  $('result-title').textContent = title;
+  $('result-detail').textContent = detail;
+  $('rematch-btn').classList.toggle('hidden', !canRematch);
+  showScreen('result');
+}
+
+export function setWins(index, wins) {
+  const pips = $(index === 0 ? 'p1-wins' : 'p2-wins').children;
+  for (let i = 0; i < pips.length; i++) pips[i].classList.toggle('on', i < wins);
+}
+
+export function setNetStatus(text, warn = false) {
+  const el = $('net-status');
+  el.textContent = text;
+  el.classList.toggle('warn', warn);
+}
+
+export function setMenuStatus(text) { $('menu-status').textContent = text; }
 export function setRoomCode(code) { $('room-code').textContent = code; }
 export function setHostStatus(text) { $('host-status').textContent = text; }
 export function setJoinStatus(text) { $('join-status').textContent = text; }

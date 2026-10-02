@@ -34,8 +34,10 @@ export function createStage(container) {
   };
   window.addEventListener('resize', onResize);
 
-  // Smooth camera target, updated every frame.
+  // Smooth camera target and un-shaken base position, updated every frame.
   const camTarget = new THREE.Vector3(0, 1.4, 0);
+  const camBase = camera.position.clone();
+  let shakeAmt = 0;
 
   /**
    * Side-view tracking: centre on the midpoint between the fighters and
@@ -49,8 +51,16 @@ export function createStage(container) {
     );
     const k = 1 - Math.exp(-CAMERA.followLerp * dt); // frame-rate independent lerp
     camTarget.x += (midX - camTarget.x) * k;
-    camera.position.x += (midX - camera.position.x) * k;
-    camera.position.z += (dist - camera.position.z) * k;
+    camBase.x += (midX - camBase.x) * k;
+    camBase.z += (dist - camBase.z) * k;
+
+    // Shake is applied on top of the smoothed base so it never accumulates.
+    camera.position.copy(camBase);
+    if (shakeAmt > 0.002) {
+      camera.position.x += (Math.random() - 0.5) * shakeAmt;
+      camera.position.y += (Math.random() - 0.5) * shakeAmt;
+      shakeAmt *= Math.exp(-14 * dt);
+    }
     camera.lookAt(camTarget);
   }
 
@@ -59,6 +69,7 @@ export function createStage(container) {
     scene,
     camera,
     updateCamera,
+    shake: (amount) => { shakeAmt = Math.max(shakeAmt, amount); },
     render: () => renderer.render(scene, camera),
   };
 }

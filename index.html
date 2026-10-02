@@ -30,6 +30,7 @@
       <div class="fighter-info left">
         <span class="fighter-name" id="p1-name">OYUNCU 1</span>
         <div class="health"><div class="health-fill" id="p1-health"></div></div>
+        <div class="wins" id="p1-wins"><i></i><i></i></div>
       </div>
       <div class="round-info">
         <span id="round-label">ROUND 1</span>
@@ -38,9 +39,11 @@
       <div class="fighter-info right">
         <span class="fighter-name" id="p2-name">OYUNCU 2</span>
         <div class="health"><div class="health-fill" id="p2-health"></div></div>
+        <div class="wins" id="p2-wins"><i></i><i></i></div>
       </div>
     </div>
     <div id="announcer"></div>
+    <div id="net-status"></div>
   </div>
 
   <!-- ===== Main menu ===== -->
@@ -50,7 +53,8 @@
       <button class="btn" data-action="solo">TEK OYUNCULU (BOT)</button>
       <button class="btn" data-action="host">ODA KUR (HOST)</button>
       <button class="btn" data-action="join">ODAYA KATIL (JOIN)</button>
-      <p class="hint">A/D: Hareket · W: Zıpla · S: Eğil · J: Yumruk · K: Tekme · L: Blok</p>
+      <p class="hint">A/D: Hareket · W: Zıpla · S: Eğil · J: Yumruk · K: Tekme · L: Blok · Esc: Menü</p>
+      <p class="status" id="menu-status"></p>
     </div>
   </div>
 
@@ -72,6 +76,16 @@
       <button class="btn" data-action="connect">BAĞLAN</button>
       <p class="status" id="join-status"></p>
       <button class="btn secondary" data-action="back">GERİ</button>
+    </div>
+  </div>
+
+  <!-- ===== Match result ===== -->
+  <div id="result" class="screen hidden">
+    <div class="panel">
+      <h2 id="result-title">KAZANAN</h2>
+      <p class="status" id="result-detail"></p>
+      <button class="btn" data-action="rematch" id="rematch-btn">TEKRAR OYNA</button>
+      <button class="btn secondary" data-action="back">ANA MENÜ</button>
     </div>
   </div>
 
