@@ -52,7 +52,7 @@ export const ATTACKS = {
   punch: {
     startup: 0.07, active: 0.08, recovery: 0.16,
     damage: 6, chip: 0.6, reach: 1.2, hitY: [1.3, 1.65],
-    knockback: 2.5, hitstun: 0.28, blockstun: 0.14,
+    knockback: 2.5, hitstun: 0.4, blockstun: 0.14, // long enough to chain into punch or kick
   },
   kick: {
     startup: 0.14, active: 0.1, recovery: 0.3,

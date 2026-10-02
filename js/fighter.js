@@ -199,6 +199,17 @@ export function overlaps(a, b) {
 
 /** Resolve `attacker`'s melee attack on `defender`. Returns a hit event or null. */
 export function resolveHit(attacker, defender) {
+  const contact = findHit(attacker, defender);
+  return contact && applyContact(contact);
+}
+
+/**
+ * Detection only, no state changes: returns a contact or null. The match
+ * detects both fighters' contacts first and applies them afterwards, so two
+ * attacks landing on the same tick trade instead of the first one
+ * cancelling the second.
+ */
+export function findHit(attacker, defender) {
   if (!isActiveFrame(attacker) || attacker.attackHit) return null;
   if (defender.action === 'ko') return null;
 
@@ -206,17 +217,22 @@ export function resolveHit(attacker, defender) {
   const hu = hurtbox(defender);
   if (!overlaps(hb, hu)) return null;
 
-  attacker.attackHit = true;
-  const blocked = applyHit(ATTACKS[attacker.action], attacker.facing, defender);
-
-  // Spark position: centre of the hitbox/hurtbox intersection.
   return {
-    type: 'hit',
-    blocked,
-    heavy: attacker.action === 'kick',
+    attacker,
+    defender,
+    move: attacker.action,
+    dir: attacker.facing,
+    // Spark position: centre of the hitbox/hurtbox intersection.
     x: (Math.max(hb.x0, hu.x0) + Math.min(hb.x1, hu.x1)) / 2,
     y: (Math.max(hb.y0, hu.y0) + Math.min(hb.y1, hu.y1)) / 2,
   };
+}
+
+/** Apply a contact from findHit. Returns the hit event. */
+export function applyContact({ attacker, defender, move, dir, x, y }) {
+  attacker.attackHit = true;
+  const blocked = applyHit(ATTACKS[move], dir, defender);
+  return { type: 'hit', blocked, heavy: move === 'kick', x, y };
 }
 
 /**

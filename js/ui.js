@@ -59,6 +59,17 @@ export function announce(text, ms = 1200) {
   if (ms > 0) announceTimeout = setTimeout(() => el.classList.remove('show'), ms);
 }
 
+const comboTimeouts = [0, 0];
+export function showCombo(side, count) {
+  const el = $(`combo-${side}`);
+  el.innerHTML = `<b>${count}</b> HIT<br>COMBO`;
+  el.classList.remove('show');
+  void el.offsetWidth; // restart the pop-in transition
+  el.classList.add('show');
+  clearTimeout(comboTimeouts[side]);
+  comboTimeouts[side] = setTimeout(() => el.classList.remove('show'), 1100);
+}
+
 /** Routes `data-action` button clicks to a handler map. */
 export function bindActions(handlers) {
   document.addEventListener('click', (e) => {

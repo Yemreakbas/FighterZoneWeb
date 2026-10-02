@@ -353,6 +353,8 @@ function handleEvents(events) {
       effects.spark(e.x, e.y, e);
       if (!e.blocked) views[e.target].flash();
       stage.shake(e.blocked ? 0.06 : e.heavy ? 0.28 : 0.14);
+    } else if (e.type === 'combo') {
+      if (e.attacker === 0 || e.attacker === 1) ui.showCombo(e.attacker, Number(e.count) | 0);
     } else if (e.type === 'fireball') {
       sound.play('fireball');
     } else if (e.type === 'ko') {

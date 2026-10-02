@@ -1,7 +1,7 @@
 import { ARENA, MATCH, ROUND_FLOW } from './config.js';
 import {
-  EMPTY_INPUT, createFighter, overlaps, projectileBox, projectileHit,
-  resolveHit, separate, spawnProjectile, stepFighter,
+  EMPTY_INPUT, applyContact, createFighter, findHit, overlaps, projectileBox,
+  projectileHit, separate, spawnProjectile, stepFighter,
 } from './fighter.js';
 
 // Authoritative match simulation: rounds, timer, combat resolution.
@@ -29,9 +29,25 @@ export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2']) {
 
   const emit = (e) => events.push(e);
 
+  // Clean hits in the attacker's current combo. A hit counts toward the
+  // combo only if it lands while the defender is still in hitstun.
+  let combo = [0, 0];
+
+  function landed(target, hit, wasStunned) {
+    const attacker = 1 - target;
+    emit({ ...hit, target });
+    if (hit.blocked) {
+      combo[attacker] = 0;
+      return;
+    }
+    combo[attacker] = wasStunned ? combo[attacker] + 1 : 1;
+    if (combo[attacker] >= 2) emit({ type: 'combo', attacker, count: combo[attacker] });
+  }
+
   function resetRound() {
     state.fighters = [createFighter(-START_X, 1), createFighter(START_X, -1)];
     state.projectiles = [];
+    combo = [0, 0];
     state.timer = MATCH.roundTime;
     state.phase = 'intro';
     state.phaseT = 0;
@@ -74,10 +90,13 @@ export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2']) {
         state.phaseT = 0;
       }
     } else if (state.phase === 'fight') {
-      // Resolve both attacks before checking KO so trades are possible.
-      for (const [atk, def, target] of [[a, b, 1], [b, a, 0]]) {
-        const hit = resolveHit(atk, def);
-        if (hit) emit({ ...hit, target });
+      // Detect both contacts before applying either, so simultaneous
+      // attacks trade, then check KO.
+      const contacts = [[a, b, 1], [b, a, 0]]
+        .map(([atk, def, target]) => ({ contact: findHit(atk, def), target, wasStunned: def.action === 'hit' }))
+        .filter((c) => c.contact);
+      for (const { contact, target, wasStunned } of contacts) {
+        landed(target, applyContact(contact), wasStunned);
       }
 
       state.timer = Math.max(0, state.timer - dt);
@@ -150,10 +169,11 @@ export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2']) {
       for (const p of state.projectiles) {
         if (p.life <= 0) continue;
         const target = 1 - p.owner;
+        const wasStunned = state.fighters[target].action === 'hit';
         const hit = projectileHit(p, state.fighters[target]);
         if (hit) {
           p.life = 0;
-          emit({ ...hit, target });
+          landed(target, hit, wasStunned);
         }
       }
     }

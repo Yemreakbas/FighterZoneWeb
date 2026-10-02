@@ -12,6 +12,8 @@ export function createStage(container) {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.25;
   container.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
@@ -75,9 +77,14 @@ export function createStage(container) {
 }
 
 function addLights(scene) {
-  scene.add(new THREE.HemisphereLight(0x8899ff, 0x220a0a, 0.6));
+  scene.add(new THREE.HemisphereLight(0x9aa8ff, 0x2a1010, 1.1));
 
-  const key = new THREE.DirectionalLight(0xffffff, 1.6);
+  // Soft fill from the camera side so the fighters' visible faces read.
+  const fill = new THREE.DirectionalLight(0xffe8d0, 0.7);
+  fill.position.set(0, 3, 12);
+  scene.add(fill);
+
+  const key = new THREE.DirectionalLight(0xffffff, 2.2);
   key.position.set(5, 12, 8);
   key.castShadow = true;
   key.shadow.mapSize.set(2048, 2048);
@@ -98,7 +105,7 @@ function addLights(scene) {
 function addArena(scene) {
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(60, 30),
-    new THREE.MeshStandardMaterial({ color: 0x1a1a24, roughness: 0.85, metalness: 0.1 })
+    new THREE.MeshStandardMaterial({ map: stoneTexture(30, 15), roughness: 0.85, metalness: 0.1 })
   );
   floor.rotation.x = -Math.PI / 2;
   floor.position.y = ARENA.groundY;
@@ -108,7 +115,7 @@ function addArena(scene) {
   // Fighting plane marker.
   const lane = new THREE.Mesh(
     new THREE.PlaneGeometry(ARENA.halfWidth * 2 + 2, 2.4),
-    new THREE.MeshStandardMaterial({ color: 0x2b1d1d, roughness: 0.6 })
+    new THREE.MeshStandardMaterial({ color: 0x5a2020, roughness: 0.6, transparent: true, opacity: 0.25 })
   );
   lane.rotation.x = -Math.PI / 2;
   lane.position.y = ARENA.groundY + 0.005;
@@ -132,8 +139,74 @@ function addArena(scene) {
   // Back wall.
   const wall = new THREE.Mesh(
     new THREE.PlaneGeometry(60, 20),
-    new THREE.MeshStandardMaterial({ color: 0x14121c, roughness: 1 })
+    new THREE.MeshStandardMaterial({ map: brickTexture(), roughness: 1 })
   );
   wall.position.set(0, 10, -8);
   scene.add(wall);
+
+  // Glowing banners in the fighters' colours.
+  for (const [x, color] of [[-5, 0xc62828], [5, 0x1e5bd6]]) {
+    const banner = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.4, 3.2),
+      new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.12, roughness: 0.95 })
+    );
+    banner.position.set(x, 4.4, -7.9);
+    scene.add(banner);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Procedural textures (drawn on a canvas, so there are no image files to host)
+// ---------------------------------------------------------------------------
+
+function canvasTexture(size, draw, repeatX = 1, repeatY = 1) {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  draw(canvas.getContext('2d'), size);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(repeatX, repeatY);
+  tex.anisotropy = 4;
+  return tex;
+}
+
+/** Large worn stone slabs; repeat is in tiles across the floor plane. */
+function stoneTexture(repeatX, repeatY) {
+  return canvasTexture(256, (g, n) => {
+    g.fillStyle = '#2a2730';
+    g.fillRect(0, 0, n, n);
+    // Speckle noise for a gritty surface.
+    for (let i = 0; i < 2500; i++) {
+      const v = 30 + Math.random() * 30;
+      g.fillStyle = `rgba(${v + 10}, ${v + 5}, ${v + 15}, 0.35)`;
+      g.fillRect(Math.random() * n, Math.random() * n, 2, 2);
+    }
+    // Grout lines: 2x2 slabs per tile.
+    g.strokeStyle = '#141218';
+    g.lineWidth = 4;
+    g.strokeRect(0, 0, n, n);
+    g.beginPath();
+    g.moveTo(n / 2, 0); g.lineTo(n / 2, n);
+    g.moveTo(0, n / 2); g.lineTo(n, n / 2);
+    g.stroke();
+  }, repeatX / 2, repeatY / 2);
+}
+
+function brickTexture() {
+  return canvasTexture(256, (g, n) => {
+    g.fillStyle = '#100e16';
+    g.fillRect(0, 0, n, n);
+    const rows = 8;
+    const h = n / rows;
+    const w = n / 4;
+    for (let r = 0; r < rows; r++) {
+      const offset = r % 2 ? w / 2 : 0;
+      for (let c = -1; c < 5; c++) {
+        const v = 26 + Math.random() * 14;
+        g.fillStyle = `rgb(${v + 6}, ${v}, ${v + 10})`;
+        g.fillRect(c * w + offset + 2, r * h + 2, w - 4, h - 4);
+      }
+    }
+  }, 8, 4);
 }
