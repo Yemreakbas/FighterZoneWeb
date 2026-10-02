@@ -1,4 +1,4 @@
-// Keyboard -> abstract fighter input.
+// Keyboard, touch buttons and gamepad -> abstract fighter input.
 // Held keys (movement, crouch, block) are level-triggered; jump/punch/kick are
 // edge-triggered and latched until the next `sample()` so a quick tap between
 // two simulation ticks is never lost.
@@ -37,16 +37,69 @@ export function createKeyboard() {
   });
 
   const touchHeld = bindTouch(pressed);
+  const pad = createGamepadReader(pressed);
 
   return {
+    /**
+     * Read the gamepad. Called every animation frame (also while paused, so
+     * Start can resume). Returns true when Start was just pressed.
+     */
+    poll: () => pad.poll(),
     /** Snapshot of the current input; clears the edge-triggered presses. */
     sample() {
       const out = { ...pressed };
-      for (const k in held) out[k] = held[k] || touchHeld[k] > 0;
+      for (const k in held) out[k] = held[k] || touchHeld[k] > 0 || pad.held[k];
       pressed.jump = pressed.punch = pressed.kick = pressed.special = false;
       return out;
     },
   };
+}
+
+// Standard Gamepad mapping (Xbox layout names; PlayStation in brackets).
+const PAD_PRESS = { 2: 'punch', 0: 'kick', 1: 'special' }; // X [□], A [✕], B [○]
+const PAD_BLOCK = [4, 5, 7];                                // LB, RB, RT
+const PAD = { up: 12, down: 13, left: 14, right: 15, start: 9 };
+const STICK_DEADZONE = 0.5;
+
+/**
+ * Polls the first connected gamepad. Buttons are turned into the same
+ * held/pressed signals as the keyboard; presses are edge-detected against
+ * the previous poll so holding a button attacks only once.
+ */
+function createGamepadReader(pressed) {
+  const held = { left: false, right: false, down: false, block: false };
+  let prev = {};
+
+  function poll() {
+    const gp = navigator.getGamepads?.().find((g) => g && g.connected);
+    if (!gp) {
+      for (const k in held) held[k] = false;
+      prev = {};
+      return false;
+    }
+    const btn = (i) => !!gp.buttons[i]?.pressed;
+    const [ax = 0, ay = 0] = gp.axes;
+    const now = {
+      up: btn(PAD.up) || ay < -STICK_DEADZONE,
+      start: btn(PAD.start),
+    };
+    for (const i in PAD_PRESS) now[`b${i}`] = btn(i);
+    const edge = (key) => now[key] && !prev[key];
+
+    held.left = btn(PAD.left) || ax < -STICK_DEADZONE;
+    held.right = btn(PAD.right) || ax > STICK_DEADZONE;
+    held.down = btn(PAD.down) || ay > STICK_DEADZONE;
+    held.block = PAD_BLOCK.some(btn);
+
+    if (edge('up')) pressed.jump = true;
+    for (const [i, action] of Object.entries(PAD_PRESS)) if (edge(`b${i}`)) pressed[action] = true;
+
+    const startPressed = edge('start');
+    prev = now;
+    return startPressed;
+  }
+
+  return { held, poll };
 }
 
 /**

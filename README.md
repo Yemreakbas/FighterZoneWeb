@@ -72,6 +72,8 @@ Değerler `js/config.js` içindeki `CHARACTERS` listesinde. Yeni karakter ekleme
 | M | Sesi aç / kapat |
 | Esc | Duraklat (online maçta oyun arka planda sürer) |
 
+**Gamepad** (Xbox / PlayStation, tarayıcının standart eşlemesi): D-pad veya sol analog hareket, ↑ zıpla, ↓ eğil · X [□] yumruk · A [✕] tekme · B [○] özel · LB / RB / RT blok · Start duraklat. Menüler fare, klavye ya da dokunmatikle kullanılıyor.
+
 Dokunmatik cihazlarda ekranda yön tuşları ve YUMRUK / TEKME / ÖZEL / BLOK butonları çıkar.
 
 ## Yapı

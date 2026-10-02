@@ -526,6 +526,9 @@ function frame(now) {
   const dt = Math.min((now - last) / 1000, 0.1);
   last = now;
 
+  // Gamepad is polled every frame, even while paused, so Start can resume.
+  if (keyboard.poll() && session) (paused ? resume() : pause());
+
   if (session && !(paused && session.pausable)) {
     const { state, events, positions } = session.update(dt);
     if (state) {
