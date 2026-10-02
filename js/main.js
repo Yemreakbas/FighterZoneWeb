@@ -298,14 +298,17 @@ function openHostLobby() {
           // Wait for the client's character pick; fall back to a random one
           // if an older/misbehaving client never sends it.
           ui.setHostStatus('Rakip bağlandı...');
+          // Compare against this connection's own waiter: after leaving and
+          // re-hosting, a stale timer must not start a match on a dead link.
+          const waiter = (msg) => { if (msg.t === 'hello') begin(validChar(msg.char)); };
           const begin = (char) => {
-            if (!awaitingHello) return;
+            if (awaitingHello !== waiter) return;
             awaitingHello = null;
             clearTimeout(timer);
             pendingRoom = null;
             startHost(link, room, [myChar, char]);
           };
-          awaitingHello = (msg) => { if (msg.t === 'hello') begin(validChar(msg.char)); };
+          awaitingHello = waiter;
           const timer = setTimeout(() => begin(otherChar(myChar)), HELLO_TIMEOUT_MS);
         },
         (text) => { pendingRoom = null; ui.setHostStatus(text); },
@@ -424,16 +427,22 @@ const hud = {
   },
 };
 
+/**
+ * Turn simulation events into sound, effects and HUD feedback. On the client
+ * these come from the network, so every field is treated as untrusted.
+ */
 function handleEvents(events) {
+  const num = (v) => (Number.isFinite(v) ? v : 0);
   for (const e of events) {
     if (e.type === 'announce') {
-      ui.announce(e.text, e.ms);
-      if (e.text.startsWith('ROUND')) sound.play('round');
-      else if (e.text === 'FIGHT!') sound.play('fight');
+      const text = String(e.text ?? '').slice(0, 32);
+      ui.announce(text, Math.min(num(e.ms) || 1200, 5000));
+      if (text.startsWith('ROUND')) sound.play('round');
+      else if (text === 'FIGHT!') sound.play('fight');
     } else if (e.type === 'hit') {
       sound.play(e.blocked ? 'block' : e.heavy ? 'heavy' : 'hit');
-      effects.spark(e.x, e.y, e);
-      if (!e.blocked) views[e.target].flash();
+      effects.spark(num(e.x), num(e.y), { blocked: !!e.blocked, heavy: !!e.heavy });
+      if (!e.blocked) views[e.target]?.flash();
       stage.shake(e.blocked ? 0.06 : e.heavy ? 0.28 : 0.14);
     } else if (e.type === 'combo') {
       if (e.attacker === 0 || e.attacker === 1) ui.showCombo(e.attacker, Number(e.count) | 0);
@@ -512,6 +521,8 @@ ui.renderCharacters(CHARACTERS);
 let last = performance.now();
 
 function frame(now) {
+  // Schedule first: an exception below must not kill the game loop.
+  requestAnimationFrame(frame);
   const dt = Math.min((now - last) / 1000, 0.1);
   last = now;
 
@@ -536,6 +547,5 @@ function frame(now) {
 
   effects.update(dt);
   stage.render();
-  requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
