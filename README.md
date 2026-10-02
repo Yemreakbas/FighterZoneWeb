@@ -29,6 +29,7 @@ python -m http.server 8080
 | J | Yumruk |
 | K | Tekme |
 | L | Blok |
+| M | Sesi aç / kapat |
 | Esc | Menüye dön |
 
 ## Yapı
@@ -44,6 +45,7 @@ js/bot.js          Yapay zeka rakip
 js/input.js        Klavye girdisi
 js/fighterView.js  Primitive model + prosedürel animasyon
 js/effects.js      Vuruş kıvılcımları
+js/sound.js        WebAudio ile prosedürel ses efektleri
 js/scene.js        Renderer, kamera, ışıklar, arena
 js/ui.js           Ekran yönetimi, can barları, anons
 js/network.js      PeerJS host/join, heartbeat

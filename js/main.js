@@ -8,6 +8,7 @@ import { createFighterView } from './fighterView.js';
 import { createEffects } from './effects.js';
 import { hostRoom, isValidCode, joinRoom } from './network.js';
 import { createInterpolator, encodeSnapshot } from './netsync.js';
+import * as sound from './sound.js';
 import * as ui from './ui.js';
 
 // ---------------------------------------------------------------------------
@@ -345,12 +346,18 @@ function handleEvents(events) {
   for (const e of events) {
     if (e.type === 'announce') {
       ui.announce(e.text, e.ms);
+      if (e.text.startsWith('ROUND')) sound.play('round');
+      else if (e.text === 'FIGHT!') sound.play('fight');
     } else if (e.type === 'hit') {
+      sound.play(e.blocked ? 'block' : e.heavy ? 'heavy' : 'hit');
       effects.spark(e.x, e.y, e);
       if (!e.blocked) views[e.target].flash();
       stage.shake(e.blocked ? 0.06 : e.heavy ? 0.28 : 0.14);
     } else if (e.type === 'ko') {
+      sound.play('ko');
       stage.shake(0.5);
+    } else if (e.type === 'over') {
+      sound.play('victory');
     }
   }
 }
@@ -378,7 +385,15 @@ ui.bindActions({
 
 window.addEventListener('keydown', (e) => {
   if (e.code === 'Escape' && (session || pendingRoom)) leaveToMenu();
+  if (e.code === 'KeyM' && !e.target.matches?.('input')) {
+    const text = sound.toggleMute() ? 'SES KAPALI' : 'SES AÇIK';
+    if (session) ui.announce(text, 800);
+    else ui.setMenuStatus(text);
+  }
 });
+// Audio may only start after a user gesture.
+window.addEventListener('pointerdown', sound.unlock);
+window.addEventListener('keydown', sound.unlock);
 document.getElementById('join-code').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') connectToRoom();
 });
