@@ -14,6 +14,25 @@ python -m http.server 8080
 # http://localhost:8080
 ```
 
+## Cloudflare Pages'e yayınlama
+
+Build adımı yok, dosyalar olduğu gibi yayınlanır.
+
+**Tek başına site olarak:**
+1. Cloudflare Dashboard → Workers & Pages → Create → Pages → bu repoyu bağla.
+2. Framework preset: `None`, Build command: *(boş)*, Build output directory: `/`.
+3. Deploy.
+
+**Mevcut bir sitenin alt klasörü olarak (ör. `games/fighter-game/`):**
+1. `index.html`, `style.css` ve `js/` klasörünü ana sitenin `games/fighter-game/` klasörüne kopyala.
+2. Ana siteyi her zamanki gibi deploy et.
+
+Tüm yollar göreli olduğu için oyun hangi klasörde olursa olsun çalışır. Adres sonunda `/` olmadan açılırsa (`.../fighter-game`) sayfa kendini otomatik olarak `.../fighter-game/` adresine yönlendirir.
+
+**Dış bağımlılıklar** (CDN): Three.js (jsDelivr), PeerJS (unpkg), Google Fonts. P2P sinyalleşmesi için PeerJS'in ücretsiz genel sunucusu (`0.peerjs.com`) kullanılır. Bağlantı kurulduktan sonra oyun verisi doğrudan iki tarayıcı arasında akar.
+
+> Not: Bazı kurumsal ağlar ve simetrik NAT arkasındaki bağlantılar, TURN sunucusu olmadan WebRTC ile eşleşemeyebilir. Bu durumda "WebRTC bağlantısı kurulamadı" hatası görünür.
+
 ## Modlar
 
 - **Tek oyunculu (Bot):** Bot her roundda biraz daha hızlı tepki veriyor, daha sık blokluyor ve daha çok kombo yapıyor.

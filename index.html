@@ -2,6 +2,16 @@
 <html lang="tr">
 <head>
   <meta charset="UTF-8" />
+  <script>
+    // Opened as ".../fighter-game" (no trailing slash), every "./" path would
+    // resolve one folder too high. Redirect to the folder URL before anything loads.
+    (function () {
+      var p = location.pathname;
+      var last = p.slice(p.lastIndexOf('/') + 1);
+      // ".../index" (Pages strips .html) already resolves "./" correctly.
+      if (last && last.indexOf('.') === -1 && last !== 'index') location.replace(p + '/' + location.search + location.hash);
+    })();
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>FighterZone</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E%F0%9F%A5%8A%3C/text%3E%3C/svg%3E" />
