@@ -46,7 +46,7 @@ Tüm yollar göreli olduğu için oyun hangi klasörde olursa olsun çalışır.
 ## Modlar
 
 - **Tek oyunculu (Bot):** Bot her roundda biraz daha hızlı tepki veriyor, daha sık blokluyor ve daha çok kombo yapıyor.
-- **Oda Kur / Odaya Katıl (P2P):** Host 4 haneli bir kod alır, rakip bu kodla bağlanır. Simülasyon host'ta çalışır. Client sadece tuş girdisi gönderir ve host'tan gelen durumu bağlantı kalitesine göre 50-150 ms arası ayarlanan bir tamponla ara değerleyerek çizer.
+- **Oda Kur / Odaya Katıl (P2P):** Host 4 haneli bir kod alır, rakip bu kodla bağlanır. Simülasyon host'ta çalışır. Client her karede numaralı girdisini gönderir ve kendi karakterini anında yerelde tahmin eder (client prediction). Host'tan gelen durumla karşılaştırıp gerekirse yumuşakça düzeltir. Rakibi ise bağlantı kalitesine göre 50-150 ms arası ayarlanan bir tamponla ara değerleyerek çizer.
 
 ## Karakterler
 
@@ -93,5 +93,6 @@ js/sound.js        WebAudio ile prosedürel ses efektleri
 js/scene.js        Renderer, kamera, ışıklar, arena
 js/ui.js           Ekran yönetimi, can barları, anons
 js/network.js      PeerJS host/join, heartbeat
-js/netsync.js      Durum paketleri ve client interpolasyonu
+js/netsync.js      Durum paketleri, girdi kuyruğu, client interpolasyonu
+js/prediction.js   Client tarafı tahmin ve uzlaştırma
 ```

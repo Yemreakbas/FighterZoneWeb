@@ -1,6 +1,6 @@
 import { ARENA, HITSTOP, MATCH, ROUND_FLOW } from './config.js';
 import {
-  EMPTY_INPUT, applyContact, createFighter, findHit, overlaps, projectileBox,
+  EMPTY_INPUT, applyContact, bufferPress, createFighter, findHit, overlaps, projectileBox,
   projectileHit, separate, spawnProjectile, stepFighter,
 } from './fighter.js';
 
@@ -79,13 +79,9 @@ export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1]) {
 
     if (state.hitstop > 0) {
       state.hitstop = Math.max(0, state.hitstop - dt);
-      // Nothing moves, but attack presses are buffered so they are not
-      // lost to the freeze (the buffer only ages while the fight runs).
-      state.fighters.forEach((f, i) => {
-        const inp = inputs[i];
-        const move = inp.special ? 'special' : inp.punch ? 'punch' : inp.kick ? 'kick' : null;
-        if (move && state.phase === 'fight') f.buffer = { type: move, age: 0 };
-      });
+      // Nothing moves; presses are buffered (the buffer only ages while
+      // the fight runs).
+      if (state.phase === 'fight') state.fighters.forEach((f, i) => bufferPress(f, inputs[i]));
       return;
     }
 

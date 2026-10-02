@@ -8,7 +8,11 @@ import { ARENA, ATTACKS, MATCH, NET, PHYSICS, TICK } from '../js/config.js';
 import { EMPTY_INPUT } from '../js/fighter.js';
 import { createMatch } from '../js/game.js';
 import { createBot } from '../js/bot.js';
-import { createInterpolator, encodeSnapshot, targetDelay } from '../js/netsync.js';
+import {
+  createInputQueue, createInterpolator, decodeAuthority, decodeInput, encodeInput,
+  encodeSnapshot, targetDelay,
+} from '../js/netsync.js';
+import { createPredictor } from '../js/prediction.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -239,4 +243,102 @@ test('jittery connection raises the delay', () => {
   const jittery = settleDelay((i) => (i % 3 === 0 ? 30 : 0));
   assert.ok(jittery > steady + 20, `steady ${steady}, jittery ${jittery}`);
   assert.ok(jittery <= NET.interpMaxMs);
+});
+
+// ---------------------------------------------------------------------------
+// Client prediction (host + client wired through a fake network)
+// ---------------------------------------------------------------------------
+
+test('input bitmask round-trips', () => {
+  const input = { ...EMPTY_INPUT, left: true, block: true, special: true };
+  assert.deepEqual(decodeInput(encodeInput(input)), input);
+});
+
+test('input queue ignores stale/malformed packets and never drops presses', () => {
+  const q = createInputQueue(2);
+  q.push({ s: 1, k: encodeInput({ punch: true }) });
+  q.push({ s: 1, k: 0 });           // duplicate seq
+  q.push({ s: 'x', k: 0 });         // malformed
+  q.push({ s: 2, k: 999 });         // out of range
+  q.push({ s: 3, k: 0 });
+  q.push({ s: 4, k: 0 });
+  // Over capacity: seq 1 is merged away but its punch survives.
+  const first = q.take();
+  assert.equal(first.punch, true);
+  assert.equal(q.ack, 3);
+});
+
+/**
+ * Host match + client predictor connected by a network with `latency` ticks
+ * each way. `script(t)` is the client's input at client tick t.
+ */
+function onlineGame(latency, ticks, script, onTick = () => {}) {
+  const m = fightAt(-2, 2);
+  const queue = createInputQueue();
+  const pred = createPredictor();
+  const toHost = [];
+  const toClient = [];
+  for (let t = 0; t < ticks; t++) {
+    const input = { ...EMPTY_INPUT, ...script(t) };
+    const seq = pred.input(input);
+    toHost.push({ at: t + latency, msg: { t: 'in', s: seq, k: encodeInput(input) } });
+
+    while (toHost.length && toHost[0].at <= t) queue.push(toHost.shift().msg);
+    m.step([EMPTY_INPUT, queue.take()], TICK);
+    m.drainEvents();
+    if (t % NET.snapshotEvery === 0) {
+      const packet = JSON.parse(JSON.stringify(encodeSnapshot(m.state, t + 1, [], queue.ack)));
+      toClient.push({ at: t + latency, msg: packet });
+    }
+    while (toClient.length && toClient[0].at <= t) pred.reconcile(decodeAuthority(toClient.shift().msg));
+    onTick(t, m, pred);
+  }
+  return { m, pred };
+}
+
+test('prediction moves the local fighter on the same tick as the keypress', () => {
+  let predictedX;
+  let hostX;
+  onlineGame(6, 40, (t) => (t >= 30 ? { right: true } : {}), (t, m, pred) => {
+    if (t === 30) {
+      predictedX = pred.view(0).fighter.x;
+      hostX = m.state.fighters[1].x;
+    }
+  });
+  assert.ok(predictedX > 2, `predicted fighter should already move (x=${predictedX})`);
+  assert.equal(hostX, 2, 'host has not received the input yet');
+});
+
+test('prediction starts attacks instantly', () => {
+  let action;
+  onlineGame(6, 32, (t) => (t === 30 ? { punch: true } : {}), (t, m, pred) => {
+    if (t === 30) action = pred.view(0).fighter.action;
+  });
+  assert.equal(action, 'punch');
+});
+
+test('prediction converges to the host state once input stops', () => {
+  const { m, pred } = onlineGame(6, 140, (t) => (t >= 30 && t < 70 ? { right: true } : t === 75 ? { jump: true } : {}));
+  const host = m.state.fighters[1];
+  const predicted = pred.view(1).fighter;
+  assert.ok(Math.abs(predicted.x - host.x) < 1e-6, `x: predicted ${predicted.x} vs host ${host.x}`);
+  assert.ok(Math.abs(predicted.y - host.y) < 1e-6);
+  assert.equal(predicted.action, host.action);
+  // Only inputs still in flight remain: round trip + one snapshot interval.
+  const inFlight = 2 * 6 + NET.snapshotEvery + 1;
+  assert.ok(pred.pendingCount <= inFlight, `pending ${pred.pendingCount} > ${inFlight}`);
+});
+
+test('hostile authority packets are sanitised', () => {
+  const auth = decodeAuthority({
+    t: 's', k: 1, a: -3,
+    me: { x: 'evil', a: 'teleport', b: ['nuke', 1], ch: 42 },
+    s: { p: 'fight', hs: -1, f: [{}, {}] },
+  });
+  assert.equal(auth.ack, 0);
+  assert.equal(auth.me.x, 0);
+  assert.equal(auth.me.action, 'idle');
+  assert.equal(auth.me.buffer, null);
+  assert.equal(auth.me.char, 0);
+  assert.equal(auth.hitstop, 0);
 });

@@ -59,6 +59,15 @@ function startAttack(f, type) {
 }
 
 /**
+ * During hit-stop nothing moves, but attack presses are remembered so they
+ * are not lost to the freeze. Shared by the host and client prediction.
+ */
+export function bufferPress(f, input) {
+  const move = input.special ? 'special' : input.punch ? 'punch' : input.kick ? 'kick' : null;
+  if (move) f.buffer = { type: move, age: 0 };
+}
+
+/**
  * Advance one fixed tick. `input` is EMPTY_INPUT-shaped; `opp` is only read
  * (for facing direction).
  */

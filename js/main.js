@@ -7,7 +7,8 @@ import { createKeyboard } from './input.js';
 import { createFighterView } from './fighterView.js';
 import { createEffects } from './effects.js';
 import { hostRoom, isValidCode, joinRoom } from './network.js';
-import { createInterpolator, encodeSnapshot } from './netsync.js';
+import { createInputQueue, createInterpolator, decodeAuthority, encodeInput, encodeSnapshot } from './netsync.js';
+import { createPredictor } from './prediction.js';
 import * as sound from './sound.js';
 import * as ui from './ui.js';
 
@@ -165,31 +166,22 @@ function startSolo() {
 
 // ---- P2P host: authoritative simulation + snapshot broadcast -------------
 
-const HELD_KEYS = ['left', 'right', 'down', 'block'];
-const PRESS_MAP = { JUMP: 'jump', PUNCH: 'punch', KICK: 'kick', SPECIAL: 'special' };
-
 function startHost(link, room, chars) {
-  const remote = {
-    held: { left: false, right: false, down: false, block: false },
-    pressed: { jump: false, punch: false, kick: false, special: false },
-  };
-  const takeRemote = () => {
-    const out = { ...remote.held, ...remote.pressed };
-    for (const k in remote.pressed) remote.pressed[k] = false;
-    return out;
-  };
+  // Client inputs arrive numbered, one per client tick, and are applied one
+  // per host tick; the last applied number is echoed back for prediction.
+  const remote = createInputQueue();
 
   // Tick counter survives rematches so client-side time stays monotonic.
   let tick = 0;
   let outbox = [];
   const local = createLocalSession(
     chars,
-    () => [playerInput(), takeRemote()],
+    () => [playerInput(), remote.take()],
     (state, events) => {
       tick++;
       outbox.push(...events);
       if (tick % NET.snapshotEvery === 0) {
-        link.send(encodeSnapshot(state, tick, outbox));
+        link.send(encodeSnapshot(state, tick, outbox, remote.ack));
         outbox = [];
       }
     },
@@ -204,13 +196,9 @@ function startHost(link, room, chars) {
       return local.view();
     },
     rematch: local.rematch,
-    // The client is untrusted: only whitelisted input fields are accepted.
+    // The client is untrusted: the queue validates every packet.
     onData(msg) {
-      if (msg.t === 'held' && msg.keys && typeof msg.keys === 'object') {
-        for (const k of HELD_KEYS) remote.held[k] = msg.keys[k] === true;
-      } else if (typeof msg.input === 'string' && PRESS_MAP[msg.input]) {
-        remote.pressed[PRESS_MAP[msg.input]] = true;
-      }
+      if (msg.t === 'in') remote.push(msg);
     },
     dispose: () => {
       ticker.stop();
@@ -224,20 +212,20 @@ function startHost(link, room, chars) {
 
 function startClient(link, room) {
   const interp = createInterpolator();
-  let lastHeld = '';
+  const predictor = createPredictor();
+  let acc = 0;
 
   session = {
     canRematch: false,
-    update() {
-      const input = playerInput();
-      const held = { left: input.left, right: input.right, down: input.down, block: input.block };
-      const heldKey = HELD_KEYS.map((k) => (held[k] ? 1 : 0)).join('');
-      if (heldKey !== lastHeld) {
-        link.send({ t: 'held', keys: held });
-        lastHeld = heldKey;
-      }
-      for (const [name, key] of Object.entries(PRESS_MAP)) {
-        if (input[key]) link.send({ input: name });
+    update(dt) {
+      // Fixed-tick input: each tick is numbered, sent, and predicted locally
+      // so our own fighter reacts without waiting for the host.
+      acc += dt;
+      while (acc >= TICK) {
+        const input = playerInput();
+        const seq = predictor.input(input);
+        link.send({ t: 'in', s: seq, k: encodeInput(input) });
+        acc -= TICK;
       }
 
       const frameState = interp.sample();
@@ -249,10 +237,21 @@ function startClient(link, room) {
         frameState.stale ? 'Bağlantı yavaş...' : `Ping: ${Math.round(link.rtt)} ms · Tampon: ${Math.round(interp.delay)} ms`,
         frameState.stale,
       );
+
+      // Our fighter (index 1) is drawn from the prediction, the opponent
+      // from the interpolated host state.
+      const predicted = predictor.view(dt);
+      if (predicted) {
+        frameState.state.fighters[1] = predicted.fighter;
+        frameState.positions[1] = { x: predicted.x, y: predicted.y };
+      }
       return frameState;
     },
     onData(msg) {
-      if (msg.t === 's') interp.push(msg);
+      if (msg.t !== 's') return;
+      interp.push(msg);
+      const auth = decodeAuthority(msg);
+      if (auth) predictor.reconcile(auth);
     },
     dispose: () => room.cancel(),
   };
@@ -500,13 +499,19 @@ document.getElementById('join-code').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') connectToRoom();
 });
 
+const darken = (hex, k) =>
+  (Math.round(((hex >> 16) & 255) * k) << 16) | (Math.round(((hex >> 8) & 255) * k) << 8) | Math.round((hex & 255) * k);
+
 let shownChars = '';
 function applyCharacterColors(chars) {
   const key = chars.join(',');
   if (key === shownChars) return;
   shownChars = key;
+  const mirror = chars[0] === chars[1];
   chars.forEach((c, i) => {
-    const color = (CHARACTERS[c] || CHARACTERS[0]).color;
+    let color = (CHARACTERS[c] || CHARACTERS[0]).color;
+    // Mirror match: darken player 2 so the fighters stay distinguishable.
+    if (mirror && i === 1) color = darken(color, 0.5);
     views[i].setColor(color);
     effects.setProjectileColor(i, color);
   });

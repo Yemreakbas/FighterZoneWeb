@@ -8,11 +8,97 @@ import { CHARACTERS, NET, TICK } from './config.js';
 
 const r3 = (v) => Math.round(v * 1000) / 1000;
 
-export function encodeSnapshot(state, tick, events) {
+// ---------------------------------------------------------------------------
+// Client -> host input: one packet per client tick, { t: 'in', s: seq, k: bits }.
+// ---------------------------------------------------------------------------
+
+const INPUT_BITS = ['left', 'right', 'down', 'block', 'jump', 'punch', 'kick', 'special'];
+
+export function encodeInput(input) {
+  return INPUT_BITS.reduce((bits, key, i) => (input[key] ? bits | (1 << i) : bits), 0);
+}
+
+export function decodeInput(bits) {
+  const input = {};
+  INPUT_BITS.forEach((key, i) => { input[key] = (bits & (1 << i)) !== 0; });
+  return input;
+}
+
+const PRESS_KEYS = ['jump', 'punch', 'kick', 'special'];
+
+/**
+ * Host-side queue of client inputs, consumed one per host tick so the host
+ * applies exactly the sequence the client predicted. If the client runs
+ * ahead (clock drift, a burst after a stall) the oldest frames are merged:
+ * presses are OR'd into the next frame so no attack is ever dropped.
+ */
+export function createInputQueue(maxQueue = 4) {
+  let queue = [];
+  let lastSeq = 0;
+  let ack = 0;
+  let held = { left: false, right: false, down: false, block: false };
+
+  return {
+    /** Accept a client packet; anything malformed or out of order is ignored. */
+    push(msg) {
+      const { s, k } = msg;
+      if (!Number.isInteger(s) || s <= lastSeq) return;
+      if (!Number.isInteger(k) || k < 0 || k > 255) return;
+      lastSeq = s;
+      queue.push({ seq: s, input: decodeInput(k) });
+    },
+    /** Input for this host tick. With nothing queued, held keys persist. */
+    take() {
+      while (queue.length > maxQueue) {
+        const dropped = queue.shift();
+        for (const key of PRESS_KEYS) if (dropped.input[key]) queue[0].input[key] = true;
+      }
+      const next = queue.shift();
+      if (!next) return { ...held, jump: false, punch: false, kick: false, special: false };
+      ack = next.seq;
+      held = { left: next.input.left, right: next.input.right, down: next.input.down, block: next.input.block };
+      return next.input;
+    },
+    get ack() { return ack; },
+  };
+}
+
+/**
+ * Full simulation state of one fighter, so the client can resume predicting
+ * from exactly where the host is (see prediction.js).
+ */
+function encodeFull(f) {
+  return {
+    ch: f.char, x: r3(f.x), y: r3(f.y), vx: r3(f.vx), vy: r3(f.vy), d: f.facing, hp: r3(f.hp),
+    a: f.action, t: r3(f.t), c: f.crouch ? 1 : 0, g: f.grounded ? 1 : 0, st: r3(f.stun),
+    ah: f.attackHit ? 1 : 0, aa: f.airAttack ? 1 : 0, b: f.buffer ? [f.buffer.type, r3(f.buffer.age)] : 0,
+  };
+}
+
+const MOVES = new Set(['punch', 'kick', 'special']);
+
+function decodeFull(o) {
+  if (!o || typeof o !== 'object') return null;
+  const buf = Array.isArray(o.b) && MOVES.has(o.b[0]) ? { type: o.b[0], age: num(o.b[1]) } : null;
+  return {
+    char: validChar(o.ch), x: num(o.x), y: num(o.y), vx: num(o.vx), vy: num(o.vy),
+    facing: o.d < 0 ? -1 : 1, hp: num(o.hp), action: ACTIONS.has(o.a) ? o.a : 'idle', t: num(o.t),
+    crouch: !!o.c, grounded: !!o.g, stun: num(o.st), attackHit: !!o.ah, airAttack: !!o.aa, buffer: buf,
+  };
+}
+
+/**
+ * `ack` is the last client input sequence the host has applied; it and the
+ * full client-fighter state (`me`) drive client-side reconciliation.
+ */
+export function encodeSnapshot(state, tick, events, ack = 0) {
   return {
     t: 's',
     k: tick,
+    a: ack,
+    me: encodeFull(state.fighters[1]),
     s: {
+      hs: r3(state.hitstop || 0),
       n: state.names,
       ch: state.chars,
       r: state.round,
@@ -35,6 +121,23 @@ const PHASES = new Set(['intro', 'fight', 'roundEnd', 'over']);
 const ACTIONS = new Set(['idle', 'walk', 'crouch', 'jump', 'block', 'punch', 'kick', 'special', 'hit', 'ko', 'win']);
 const validChar = (c) => (Number.isInteger(c) && c >= 0 && c < CHARACTERS.length ? c : 0);
 const num = (v, fallback = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
+
+/**
+ * Everything the client predictor needs from a packet, or null if invalid.
+ * `opp` is the host's own fighter, used for facing and push-apart.
+ */
+export function decodeAuthority(msg) {
+  const state = decodeState(msg?.s);
+  const me = decodeFull(msg?.me);
+  if (!state || !me) return null;
+  return {
+    ack: Math.max(0, Math.floor(num(msg.a))),
+    phase: state.phase,
+    hitstop: Math.max(0, num(msg.s.hs)),
+    me,
+    opp: state.fighters[0],
+  };
+}
 
 /** Rebuild a renderer-friendly state from a packet, rejecting garbage. */
 function decodeState(s) {
