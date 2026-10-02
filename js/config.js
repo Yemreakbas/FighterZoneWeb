@@ -91,6 +91,9 @@ export const CHARACTERS = [
   { id: 'kuzgun', name: 'KUZGUN', color: 0x7b2fbf, desc: 'Çevik ama kırılgan',   speed: 1.2,  power: 0.85, projectileSpeed: 9 },
 ];
 
+// Impact freeze on clean hits (seconds). Blocked hits don't freeze.
+export const HITSTOP = { light: 0.05, heavy: 0.09 };
+
 // Crouching attacks hit this much lower.
 export const CROUCH_ATTACK_DROP = 0.5;
 // A button pressed while busy is remembered this long (input buffer).

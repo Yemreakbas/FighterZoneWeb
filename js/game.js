@@ -1,4 +1,4 @@
-import { ARENA, MATCH, ROUND_FLOW } from './config.js';
+import { ARENA, HITSTOP, MATCH, ROUND_FLOW } from './config.js';
 import {
   EMPTY_INPUT, applyContact, createFighter, findHit, overlaps, projectileBox,
   projectileHit, separate, spawnProjectile, stepFighter,
@@ -26,6 +26,7 @@ export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1]) {
     winner: -1,      // match winner once phase === 'over'
     fighters: [],
     projectiles: [],
+    hitstop: 0,      // seconds of impact freeze remaining
   };
   let events = [];
 
@@ -42,6 +43,8 @@ export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1]) {
       combo[attacker] = 0;
       return;
     }
+    // Hit-stop: freeze the whole fight briefly so clean hits feel heavy.
+    state.hitstop = Math.max(state.hitstop, hit.heavy ? HITSTOP.heavy : HITSTOP.light);
     combo[attacker] = wasStunned ? combo[attacker] + 1 : 1;
     if (combo[attacker] >= 2) emit({ type: 'combo', attacker, count: combo[attacker] });
   }
@@ -73,6 +76,19 @@ export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1]) {
 
   function step(inputs, dt) {
     const [a, b] = state.fighters;
+
+    if (state.hitstop > 0) {
+      state.hitstop = Math.max(0, state.hitstop - dt);
+      // Nothing moves, but attack presses are buffered so they are not
+      // lost to the freeze (the buffer only ages while the fight runs).
+      state.fighters.forEach((f, i) => {
+        const inp = inputs[i];
+        const move = inp.special ? 'special' : inp.punch ? 'punch' : inp.kick ? 'kick' : null;
+        if (move && state.phase === 'fight') f.buffer = { type: move, age: 0 };
+      });
+      return;
+    }
+
     const prevPhaseT = state.phaseT;
     state.phaseT += dt;
 
