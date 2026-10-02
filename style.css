@@ -252,6 +252,7 @@ h2 {
 .touch-actions .punch { right: 88px; bottom: 0; background: rgba(255, 59, 59, 0.3); }
 .touch-actions .kick { right: 0; bottom: 30px; background: rgba(255, 122, 26, 0.3); }
 .touch-actions .block { right: 64px; bottom: 86px; width: 60px; height: 60px; }
+.touch-actions .special { right: 0; bottom: 110px; width: 56px; height: 56px; font-size: 12px; background: rgba(63, 160, 255, 0.3); }
 
 .tbtn.menu {
   top: 88px;

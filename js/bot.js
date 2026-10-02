@@ -15,6 +15,7 @@ export function createBot(index) {
   let intentUntil = 0;
   let queued = [];       // [{ type, at }] scheduled button presses (combos)
   let lastOpp = { action: 'idle', t: 0 };
+  let reactedToProjectile = false; // one dodge decision per incoming projectile
 
   const rand = Math.random;
 
@@ -22,9 +23,9 @@ export function createBot(index) {
     queued.push({ type, at: time + delay });
   }
 
-  function decide(me, opp, lvl, dist) {
+  function decide(state, opp, lvl, dist) {
     nextDecision = time + lvl.reaction * (0.7 + rand() * 0.6);
-    if (intent === 'block' && time < intentUntil) return;
+    if ((intent === 'block' || intent === 'crouch') && time < intentUntil) return; // committed to a defence
 
     // Anti-air: kick a falling opponent that is about to land on us.
     if (!opp.grounded && opp.vy < 0 && dist < KICK_RANGE + 0.3 && rand() < lvl.aggression) {
@@ -33,6 +34,13 @@ export function createBot(index) {
     }
 
     if (dist > KICK_RANGE) {
+      // Zoning: throw a projectile from mid/long range.
+      const ownOut = state.projectiles.some((p) => p.owner === index);
+      if (dist > 3.5 && !ownOut && rand() < lvl.aggression * 0.3) {
+        intent = 'hold';
+        press('special');
+        return;
+      }
       const r = rand();
       if (dist < 4.5 && r < 0.06 + lvl.aggression * 0.08) press('jump');
       intent = r < 0.25 + lvl.aggression * 0.7 ? 'approach' : r < 0.9 ? 'hold' : 'retreat';
@@ -85,7 +93,21 @@ export function createBot(index) {
       queued = [];
     }
 
-    if (time >= nextDecision) decide(me, opp, lvl, dist);
+    // Incoming projectile: duck under it or block, with the level's block odds.
+    const incoming = state.projectiles.find((p) => p.owner !== index
+      && Math.sign(me.x - p.x) === Math.sign(p.vx) && Math.abs(me.x - p.x) < 3.5);
+    if (!incoming) {
+      reactedToProjectile = false;
+    } else if (!reactedToProjectile && me.grounded) {
+      reactedToProjectile = true;
+      if (rand() < lvl.block + 0.1) {
+        intent = rand() < 0.5 ? 'crouch' : 'block';
+        intentUntil = time + Math.abs(me.x - incoming.x) / Math.abs(incoming.vx || 9) + 0.25;
+        queued = [];
+      }
+    }
+
+    if (time >= nextDecision) decide(state, opp, lvl, dist);
     if (intent === 'block' && time >= intentUntil) intent = 'hold';
     if (intent === 'crouch' && time >= intentUntil) intent = 'hold';
 

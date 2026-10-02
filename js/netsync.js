@@ -24,13 +24,14 @@ export function encodeSnapshot(state, tick, events) {
         x: r3(f.x), y: r3(f.y), d: f.facing, hp: r3(f.hp),
         a: f.action, t: r3(f.t), c: f.crouch ? 1 : 0, g: f.grounded ? 1 : 0,
       })),
+      pr: state.projectiles.map((p) => ({ o: p.owner, x: r3(p.x), y: r3(p.y), d: Math.sign(p.vx) })),
     },
     e: events.map((e) => (e.type === 'hit' ? { ...e, x: r3(e.x), y: r3(e.y) } : e)),
   };
 }
 
 const PHASES = new Set(['intro', 'fight', 'roundEnd', 'over']);
-const ACTIONS = new Set(['idle', 'walk', 'crouch', 'jump', 'block', 'punch', 'kick', 'hit', 'ko', 'win']);
+const ACTIONS = new Set(['idle', 'walk', 'crouch', 'jump', 'block', 'punch', 'kick', 'special', 'hit', 'ko', 'win']);
 const num = (v, fallback = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
 
 /** Rebuild a renderer-friendly state from a packet, rejecting garbage. */
@@ -48,6 +49,9 @@ function decodeState(s) {
       x: num(f?.x), y: num(f?.y), facing: f?.d < 0 ? -1 : 1, hp: num(f?.hp),
       action: ACTIONS.has(f?.a) ? f.a : 'idle', t: num(f?.t),
       crouch: !!f?.c, grounded: !!f?.g,
+    })),
+    projectiles: (Array.isArray(s.pr) ? s.pr.slice(0, 4) : []).map((p) => ({
+      owner: p?.o === 1 ? 1 : 0, x: num(p?.x), y: num(p?.y), vx: p?.d < 0 ? -1 : 1,
     })),
   };
 }
@@ -116,7 +120,12 @@ export function createInterpolator() {
       const sameMove = a.action === f.action && a.t <= f.t;
       return { ...f, t: sameMove ? a.t + (f.t - a.t) * alpha : f.t };
     });
-    const state = { ...to.state, fighters };
+    // Projectiles are matched by owner (at most one each) and blended too.
+    const projectiles = to.state.projectiles.map((p) => {
+      const q = from.state.projectiles.find((o) => o.owner === p.owner);
+      return q ? { ...p, x: q.x + (p.x - q.x) * alpha } : p;
+    });
+    const state = { ...to.state, fighters, projectiles };
 
     const events = [];
     pending = pending.filter((p) => {

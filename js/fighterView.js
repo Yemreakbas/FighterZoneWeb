@@ -83,7 +83,7 @@ export function createFighterView(scene, color) {
     body.rotation.y += (targetYaw - body.rotation.y) * (1 - Math.exp(-14 * dt));
 
     const target = computePose(f, animTime);
-    const rate = f.action === 'punch' || f.action === 'kick' ? 45 : 18;
+    const rate = f.action === 'punch' || f.action === 'kick' || f.action === 'special' ? 45 : 18;
     const k = 1 - Math.exp(-rate * dt);
     for (const key in cur) cur[key] += (target[key] - cur[key]) * k;
 
@@ -198,6 +198,26 @@ function computePose(f, time) {
       }
       if (f.grounded && !low) { p.farHip = 0.05; p.farKnee = 0.15; }
       p.spineX = (low ? 0.35 : 0.1) - e * 0.4;
+      break;
+    }
+
+    case 'special': {
+      // Draw both hands back to the hip, then thrust them forward.
+      const a = ATTACKS.special;
+      if (f.t < a.startup) {
+        const w = f.t / a.startup;
+        p.nearShoulder = p.farShoulder = lerp(-0.8, 0.5, w);
+        p.nearElbow = p.farElbow = lerp(-1.8, -1.9, w);
+        p.spineY = -w * 0.5;
+        p.spineX = 0.1 - w * 0.15;
+      } else {
+        const e = extension('special', f.t);
+        p.nearShoulder = p.farShoulder = lerp(-0.8, -1.55, e);
+        p.nearElbow = p.farElbow = lerp(-1.8, -0.1, e);
+        p.spineY = e * 0.2;
+        p.spineX = 0.1 + e * 0.15;
+      }
+      p.nearHip = -0.6; p.nearKnee = 0.7; p.farHip = 0.35; p.farKnee = 0.3;
       break;
     }
 

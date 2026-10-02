@@ -28,11 +28,12 @@ python -m http.server 8080
 | S (↓) | Eğil |
 | J | Yumruk |
 | K | Tekme |
+| U | Özel hareket (enerji topu) |
 | L | Blok |
 | M | Sesi aç / kapat |
 | Esc | Menüye dön |
 
-Dokunmatik cihazlarda ekranda yön tuşları ve YUMRUK / TEKME / BLOK butonları çıkar.
+Dokunmatik cihazlarda ekranda yön tuşları ve YUMRUK / TEKME / ÖZEL / BLOK butonları çıkar.
 
 ## Yapı
 

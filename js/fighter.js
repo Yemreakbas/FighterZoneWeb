@@ -1,13 +1,13 @@
-import { ARENA, ATTACKS, BODY, CROUCH_ATTACK_DROP, INPUT_BUFFER, MATCH, PHYSICS } from './config.js';
+import { ARENA, ATTACKS, BODY, CROUCH_ATTACK_DROP, INPUT_BUFFER, MATCH, PHYSICS, PROJECTILE } from './config.js';
 
 // Pure simulation of a single fighter. State is plain JSON-friendly data so
 // the host can serialize it straight into network snapshots. No Three.js here.
 //
-// Actions: idle | walk | crouch | jump | block | punch | kick | hit | ko | win
+// Actions: idle | walk | crouch | jump | block | punch | kick | special | hit | ko | win
 
 export const EMPTY_INPUT = Object.freeze({
   left: false, right: false, down: false, block: false,
-  jump: false, punch: false, kick: false,
+  jump: false, punch: false, kick: false, special: false,
 });
 
 export function createFighter(x, facing) {
@@ -20,13 +20,13 @@ export function createFighter(x, facing) {
     crouch: false,     // attack/block performed from a crouch
     grounded: true,
     stun: 0,           // remaining hit/block stun
-    attackHit: false,  // current attack already connected (one hit per swing)
+    attackHit: false,  // current attack already connected / projectile already fired
     airAttack: false,  // one aerial attack per jump
     buffer: null,      // { type, age } attack pressed while busy
   };
 }
 
-const BUSY = new Set(['punch', 'kick', 'hit', 'ko', 'win']);
+const BUSY = new Set(['punch', 'kick', 'special', 'hit', 'ko', 'win']);
 
 export function isAttacking(f) {
   return f.action === 'punch' || f.action === 'kick';
@@ -63,7 +63,8 @@ export function stepFighter(f, input, opp, dt) {
   f.t += dt;
 
   // Remember attack presses that arrive while the fighter cannot act yet.
-  if (input.punch || input.kick) f.buffer = { type: input.punch ? 'punch' : 'kick', age: 0 };
+  const pressedMove = input.special ? 'special' : input.punch ? 'punch' : input.kick ? 'kick' : null;
+  if (pressedMove) f.buffer = { type: pressedMove, age: 0 };
   else if (f.buffer && (f.buffer.age += dt) > INPUT_BUFFER) f.buffer = null;
 
   if (f.action === 'hit') {
@@ -71,7 +72,7 @@ export function stepFighter(f, input, opp, dt) {
     if (f.stun <= 0 && f.grounded) setAction(f, 'idle');
   } else if (f.action === 'block' && f.stun > 0) {
     f.stun -= dt; // blockstun: locked in block
-  } else if (isAttacking(f)) {
+  } else if (isAttacking(f) || f.action === 'special') {
     const a = ATTACKS[f.action];
     if (f.t >= a.startup + a.active + a.recovery) {
       setAction(f, f.grounded ? (f.crouch ? 'crouch' : 'idle') : 'jump');
@@ -87,7 +88,8 @@ export function stepFighter(f, input, opp, dt) {
 
 function control(f, input, opp) {
   if (!f.grounded) {
-    if (f.buffer && !f.airAttack) startAttack(f, f.buffer.type);
+    // Specials are ground-only; aerial punch/kick once per jump.
+    if (f.buffer && f.buffer.type !== 'special' && !f.airAttack) startAttack(f, f.buffer.type);
     return;
   }
 
@@ -108,6 +110,7 @@ function control(f, input, opp) {
   f.crouch = input.down;
 
   if (f.buffer) {
+    if (f.buffer.type === 'special') f.crouch = false; // always thrown standing
     startAttack(f, f.buffer.type);
     return;
   }
@@ -194,10 +197,7 @@ export function overlaps(a, b) {
   return a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0;
 }
 
-/**
- * Resolve `attacker` hitting `defender`. Returns a hit event or null.
- * A block only works on the ground while facing the attacker.
- */
+/** Resolve `attacker`'s melee attack on `defender`. Returns a hit event or null. */
 export function resolveHit(attacker, defender) {
   if (!isActiveFrame(attacker) || attacker.attackHit) return null;
   if (defender.action === 'ko') return null;
@@ -207,10 +207,25 @@ export function resolveHit(attacker, defender) {
   if (!overlaps(hb, hu)) return null;
 
   attacker.attackHit = true;
-  const a = ATTACKS[attacker.action];
-  const facingAttacker = Math.sign(attacker.x - defender.x) === defender.facing;
-  const blocked = defender.action === 'block' && defender.grounded && facingAttacker;
-  const dir = attacker.facing;
+  const blocked = applyHit(ATTACKS[attacker.action], attacker.facing, defender);
+
+  // Spark position: centre of the hitbox/hurtbox intersection.
+  return {
+    type: 'hit',
+    blocked,
+    heavy: attacker.action === 'kick',
+    x: (Math.max(hb.x0, hu.x0) + Math.min(hb.x1, hu.x1)) / 2,
+    y: (Math.max(hb.y0, hu.y0) + Math.min(hb.y1, hu.y1)) / 2,
+  };
+}
+
+/**
+ * Apply attack data `a` travelling in direction `dir` (+1/-1) to the
+ * defender. A block only works on the ground while facing the incoming
+ * attack. Returns true if it was blocked.
+ */
+function applyHit(a, dir, defender) {
+  const blocked = defender.action === 'block' && defender.grounded && defender.facing === -dir;
 
   if (blocked) {
     defender.hp = Math.max(0, defender.hp - a.chip);
@@ -225,15 +240,38 @@ export function resolveHit(attacker, defender) {
     defender.buffer = null;
     if (!defender.grounded) defender.vy = Math.max(defender.vy, 3); // juggle pop
   }
+  return blocked;
+}
 
-  // Spark position: centre of the hitbox/hurtbox intersection.
+// ---------------------------------------------------------------------------
+// Projectiles: { owner, x, y, vx, life }. The projectile's box is a square
+// of side 2*radius around its centre.
+// ---------------------------------------------------------------------------
+
+/** If `f` reached the release frame of its special, return a new projectile. */
+export function spawnProjectile(f, owner) {
+  if (f.action !== 'special' || f.attackHit || f.t < ATTACKS.special.startup) return null;
+  f.attackHit = true;
   return {
-    type: 'hit',
-    blocked,
-    heavy: attacker.action === 'kick',
-    x: (Math.max(hb.x0, hu.x0) + Math.min(hb.x1, hu.x1)) / 2,
-    y: (Math.max(hb.y0, hu.y0) + Math.min(hb.y1, hu.y1)) / 2,
+    owner,
+    x: f.x + f.facing * PROJECTILE.spawnOffset,
+    y: f.y + PROJECTILE.height,
+    vx: f.facing * PROJECTILE.speed,
+    life: PROJECTILE.lifetime,
   };
+}
+
+export function projectileBox(p) {
+  const r = PROJECTILE.radius;
+  return { x0: p.x - r, x1: p.x + r, y0: p.y - r, y1: p.y + r };
+}
+
+/** Resolve a projectile against its target. Returns a hit event or null. */
+export function projectileHit(p, defender) {
+  if (defender.action === 'ko') return null;
+  if (!overlaps(projectileBox(p), hurtbox(defender))) return null;
+  const blocked = applyHit(ATTACKS.special, Math.sign(p.vx), defender);
+  return { type: 'hit', blocked, heavy: true, x: p.x, y: p.y };
 }
 
 /** Keep fighters from walking through each other. */

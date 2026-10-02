@@ -13,11 +13,12 @@ const PRESS = {
   KeyW: 'jump', ArrowUp: 'jump', Space: 'jump',
   KeyJ: 'punch',
   KeyK: 'kick',
+  KeyU: 'special',
 };
 
 export function createKeyboard() {
   const held = { left: false, right: false, down: false, block: false };
-  const pressed = { jump: false, punch: false, kick: false };
+  const pressed = { jump: false, punch: false, kick: false, special: false };
 
   const isTyping = (e) => e.target instanceof HTMLElement && e.target.matches('input, textarea');
 
@@ -42,7 +43,7 @@ export function createKeyboard() {
     sample() {
       const out = { ...pressed };
       for (const k in held) out[k] = held[k] || touchHeld[k] > 0;
-      pressed.jump = pressed.punch = pressed.kick = false;
+      pressed.jump = pressed.punch = pressed.kick = pressed.special = false;
       return out;
     },
   };

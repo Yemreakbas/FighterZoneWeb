@@ -133,16 +133,16 @@ function startSolo() {
 // ---- P2P host: authoritative simulation + snapshot broadcast -------------
 
 const HELD_KEYS = ['left', 'right', 'down', 'block'];
-const PRESS_MAP = { JUMP: 'jump', PUNCH: 'punch', KICK: 'kick' };
+const PRESS_MAP = { JUMP: 'jump', PUNCH: 'punch', KICK: 'kick', SPECIAL: 'special' };
 
 function startHost(link, room) {
   const remote = {
     held: { left: false, right: false, down: false, block: false },
-    pressed: { jump: false, punch: false, kick: false },
+    pressed: { jump: false, punch: false, kick: false, special: false },
   };
   const takeRemote = () => {
     const out = { ...remote.held, ...remote.pressed };
-    remote.pressed.jump = remote.pressed.punch = remote.pressed.kick = false;
+    for (const k in remote.pressed) remote.pressed[k] = false;
     return out;
   };
 
@@ -353,6 +353,8 @@ function handleEvents(events) {
       effects.spark(e.x, e.y, e);
       if (!e.blocked) views[e.target].flash();
       stage.shake(e.blocked ? 0.06 : e.heavy ? 0.28 : 0.14);
+    } else if (e.type === 'fireball') {
+      sound.play('fireball');
     } else if (e.type === 'ko') {
       sound.play('ko');
       stage.shake(0.5);
@@ -413,10 +415,12 @@ function frame(now) {
     if (state) {
       state.fighters.forEach((f, i) => views[i].update(f, dt, positions[i].x, positions[i].y));
       stage.updateCamera(dt, positions[0].x, positions[1].x);
+      effects.syncProjectiles(state.projectiles || [], dt);
       hud.sync(state);
       handleEvents(events);
     }
   } else {
+    effects.syncProjectiles([], dt);
     // Attract mode: idle fighters and a slow camera sway behind the menu.
     menuFighters.forEach((f, i) => views[i].update(f, dt, f.x, f.y));
     const sway = Math.sin(now / 1000 * 0.3) * 3;

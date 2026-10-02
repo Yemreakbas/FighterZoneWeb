@@ -75,6 +75,10 @@ const SOUNDS = {
     noise(0.05, 3000, 0.25, 'highpass');
     tone(950, 700, 0.05, 0.12, 'square');
   },
+  fireball() {
+    noise(0.35, 900, 0.35, 'bandpass');
+    tone(220, 520, 0.3, 0.18, 'sawtooth');
+  },
   ko() {
     tone(95, 28, 0.7, 1);
     noise(0.45, 500, 0.6);

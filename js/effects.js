@@ -50,5 +50,42 @@ export function createEffects(scene) {
     flashLight.intensity *= Math.exp(-25 * dt);
   }
 
-  return { spark, update };
+  // Projectiles: up to one per fighter, coloured by owner.
+  const ORB_COLORS = [0xff5a3a, 0x3aa8ff];
+  const orbGeo = new THREE.SphereGeometry(1, 16, 12);
+  const orbs = ORB_COLORS.map((color) => {
+    const group = new THREE.Group();
+    const glow = new THREE.Mesh(orbGeo, new THREE.MeshBasicMaterial({
+      color, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false,
+    }));
+    const core = new THREE.Mesh(orbGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    core.scale.setScalar(0.12);
+    glow.scale.setScalar(0.26);
+    // The light stays in the scene at intensity 0 when unused: toggling a
+    // light's visibility changes the light count and forces a shader recompile.
+    const light = new THREE.PointLight(color, 0, 5);
+    group.add(glow, core, light);
+    scene.add(group);
+    return { glow, core, light, group };
+  });
+  const showOrb = (o, on) => {
+    o.glow.visible = o.core.visible = on;
+    o.light.intensity = on ? 8 : 0;
+  };
+  orbs.forEach((o) => showOrb(o, false));
+  let orbTime = 0;
+
+  /** Mirror the simulation's projectile list (positions already interpolated). */
+  function syncProjectiles(list, dt) {
+    orbTime += dt;
+    orbs.forEach((o, i) => showOrb(o, list.some((p) => p.owner === i)));
+    for (const p of list) {
+      const o = orbs[p.owner];
+      if (!o) continue;
+      o.group.position.set(p.x, p.y, 0);
+      o.glow.scale.setScalar(0.26 + Math.sin(orbTime * 30) * 0.04);
+    }
+  }
+
+  return { spark, update, syncProjectiles };
 }

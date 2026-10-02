@@ -60,6 +60,26 @@ export const ATTACKS = {
     knockback: 5.5, hitstun: 0.42, blockstun: 0.2,
   },
 };
+// Special move: launches a projectile when startup ends. It has no melee
+// hitbox; damage values apply to the projectile instead.
+ATTACKS.special = {
+  startup: 0.3, active: 0.05, recovery: 0.4,
+  damage: 9, chip: 1.5,
+  knockback: 3.5, hitstun: 0.35, blockstun: 0.2,
+};
+
+/**
+ * Projectile travels at chest height: crouching (hurtbox top 1.15) ducks
+ * under it and jumping clears it. One projectile per fighter at a time.
+ */
+export const PROJECTILE = {
+  speed: 9,
+  height: 1.4,    // centre height above the caster's feet
+  radius: 0.22,
+  spawnOffset: 0.6,
+  lifetime: 2.2,
+};
+
 // Crouching attacks hit this much lower.
 export const CROUCH_ATTACK_DROP = 0.5;
 // A button pressed while busy is remembered this long (input buffer).
