@@ -14,6 +14,16 @@ python -m http.server 8080
 # http://localhost:8080
 ```
 
+## Testler
+
+Simülasyon (dövüş kuralları, enerji topu, combo, ağ paketleri) için regresyon testleri `tests/` klasöründe. npm gerekmez, Node 18+ yeterli:
+
+```bash
+node --test
+```
+
+Denge ayarı (`js/config.js`) yaptıktan sonra çalıştırırsan kuralların bozulmadığını görürsün. `tests/` klasörü oyun tarafından yüklenmez, alt klasöre kopyalarken dahil etmen gerekmez.
+
 ## Cloudflare Pages'e yayınlama
 
 Build adımı yok, dosyalar olduğu gibi yayınlanır.
