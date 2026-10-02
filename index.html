@@ -84,7 +84,7 @@
       <button class="btn" data-action="solo">TEK OYUNCULU (BOT)</button>
       <button class="btn" data-action="host">ODA KUR (HOST)</button>
       <button class="btn" data-action="join">ODAYA KATIL (JOIN)</button>
-      <p class="hint">A/D: Hareket · W: Zıpla · S: Eğil · J: Yumruk · K: Tekme · U: Özel · L: Blok · M: Ses · Esc: Duraklat</p>
+      <button class="btn secondary" data-action="help">NASIL OYNANIR</button>
       <p class="status" id="menu-status"></p>
     </div>
   </div>
@@ -119,12 +119,43 @@
     </div>
   </div>
 
+  <!-- ===== How to play ===== -->
+  <div id="help" class="screen hidden">
+    <div class="panel wide help">
+      <h2>NASIL OYNANIR</h2>
+      <table class="controls">
+        <thead><tr><th></th><th>Klavye</th><th>Kol</th><th>Dokunmatik</th></tr></thead>
+        <tbody>
+          <tr><td>Hareket</td><td><kbd>A</kbd> <kbd>D</kbd> / <kbd>←</kbd> <kbd>→</kbd></td><td>D-pad / sol analog</td><td>◀ ▶</td></tr>
+          <tr><td>Zıpla</td><td><kbd>W</kbd> / <kbd>↑</kbd> / <kbd>Space</kbd></td><td>↑</td><td>▲</td></tr>
+          <tr><td>Eğil</td><td><kbd>S</kbd> / <kbd>↓</kbd></td><td>↓</td><td>▼</td></tr>
+          <tr><td>Yumruk</td><td><kbd>J</kbd></td><td>X [□]</td><td>YUMRUK</td></tr>
+          <tr><td>Tekme</td><td><kbd>K</kbd></td><td>A [✕]</td><td>TEKME</td></tr>
+          <tr><td>Özel (enerji topu)</td><td><kbd>U</kbd></td><td>B [○]</td><td>ÖZEL</td></tr>
+          <tr><td>Blok</td><td><kbd>L</kbd></td><td>LB / RB / RT</td><td>BLOK</td></tr>
+          <tr><td>Duraklat</td><td><kbd>Esc</kbd></td><td>Start</td><td>❚❚</td></tr>
+          <tr><td>Ses</td><td><kbd>M</kbd></td><td></td><td></td></tr>
+        </tbody>
+      </table>
+      <ul class="tips">
+        <li><b>Eğil</b>, ayakta atılan yumruklardan ve enerji topundan kaçar. Eğik tekme ise eğilen rakibe de vurur.</li>
+        <li><b>Blok</b> hasarın çoğunu keser ama sadece yüzün rakibe dönükken ve yerdeyken çalışır.</li>
+        <li>Rakip sersemlemişken üst üste vurursan <b>combo</b> olur: yumruk → yumruk → tekme.</li>
+        <li>Ekranda oyuncu başına tek <b>enerji topu</b> olabilir. İki top çarpışırsa birbirini yok eder.</li>
+        <li>Maçı bitiren K.O.'dan sonra <b>FINISH HIM!</b> gelir. 4 saniye içinde özel hareketle vurursan <b>FATALITY</b>.</li>
+        <li>İki round alan maçı kazanır.</li>
+      </ul>
+      <button class="btn secondary" data-action="help-back">GERİ</button>
+    </div>
+  </div>
+
   <!-- ===== Pause ===== -->
   <div id="pause" class="screen hidden">
     <div class="panel">
       <h2>DURAKLATILDI</h2>
       <p class="status" id="pause-note"></p>
       <button class="btn" data-action="resume">DEVAM ET</button>
+      <button class="btn secondary" data-action="help">NASIL OYNANIR</button>
       <button class="btn secondary" data-action="back">ANA MENÜ</button>
     </div>
   </div>

@@ -2,13 +2,18 @@
 
 const $ = (id) => document.getElementById(id);
 
-const SCREENS = ['menu', 'select', 'lobby-host', 'lobby-join', 'result', 'pause'];
+const SCREENS = ['menu', 'select', 'lobby-host', 'lobby-join', 'result', 'pause', 'help'];
+
+// Help opened from the pause menu keeps the HUD visible underneath.
+let helpOverFight = false;
+export function setHelpOverFight(v) { helpOverFight = v; }
 
 /** Show one overlay screen, or `null` for the bare in-fight HUD. */
 export function showScreen(name) {
   for (const id of SCREENS) $(id).classList.toggle('hidden', id !== name);
-  // Result and pause are drawn over the HUD so the fight stays visible.
-  $('hud').classList.toggle('hidden', name !== null && name !== 'result' && name !== 'pause');
+  // Result, pause and help are drawn over the HUD so the fight stays visible.
+  const overFight = name === null || name === 'result' || name === 'pause' || (name === 'help' && helpOverFight);
+  $('hud').classList.toggle('hidden', !overFight);
 }
 
 export function showResult(title, detail, canRematch) {

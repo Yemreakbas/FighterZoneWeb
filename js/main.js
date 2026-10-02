@@ -38,6 +38,7 @@ let session = null;
  * online match is host-authoritative and keeps running behind the menu.
  */
 let paused = false;
+let helpReturn = 'menu';
 
 // ---------------------------------------------------------------------------
 // Sessions
@@ -484,6 +485,13 @@ ui.bindActions({
   connect: connectToRoom,
   pause,
   resume,
+  // Help opens from the menu or the pause screen and returns to it.
+  help: () => {
+    helpReturn = paused ? 'pause' : 'menu';
+    ui.setHelpOverFight(paused);
+    ui.showScreen('help');
+  },
+  'help-back': () => ui.showScreen(helpReturn),
   rematch: () => {
     if (!session?.rematch) return;
     paused = false;

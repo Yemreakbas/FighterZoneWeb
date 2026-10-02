@@ -85,7 +85,6 @@ h2 {
 .btn:active { transform: scale(0.98); }
 .btn.secondary { background: rgba(255, 255, 255, 0.08); }
 
-.hint { color: var(--muted); font-size: 14px; text-align: center; margin-top: 6px; }
 .status { color: var(--muted); min-height: 1.2em; text-align: center; }
 
 .room-code {
@@ -144,6 +143,36 @@ h2 {
   .char-grid { grid-template-columns: repeat(4, 1fr); }
   .char-card { padding: 10px; gap: 4px; }
   .panel { padding: 20px 18px; gap: 10px; }
+}
+
+/* ---------- How to play ---------- */
+.panel.help { max-height: calc(100vh - 32px); overflow-y: auto; align-items: stretch; }
+.panel.help h2 { text-align: center; }
+.controls { width: 100%; border-collapse: collapse; font-size: 15px; }
+.controls th { color: var(--muted); font-weight: 500; text-align: left; padding: 4px 8px; }
+.controls td { padding: 6px 8px; border-top: 1px solid var(--panel-border); }
+.controls td:first-child { font-weight: 700; white-space: nowrap; }
+kbd {
+  display: inline-block;
+  min-width: 1.6em;
+  padding: 1px 6px;
+  font: 600 13px 'Rajdhani', sans-serif;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-bottom-width: 3px;
+  border-radius: 5px;
+}
+.tips { margin: 4px 0 0 18px; color: var(--muted); font-size: 15px; line-height: 1.45; }
+.tips b { color: var(--text); }
+
+/* Narrow screens: drop the touch column on desktop-like layouts and vice versa. */
+@media (max-width: 600px) {
+  .controls { font-size: 13px; }
+  .controls th:nth-child(3), .controls td:nth-child(3) { display: none; }
+}
+@media (pointer: fine) {
+  .controls th:nth-child(4), .controls td:nth-child(4) { display: none; }
 }
 
 /* ---------- HUD ---------- */
@@ -276,7 +305,6 @@ h2 {
 @media (pointer: coarse) {
   html, body { touch-action: none; -webkit-touch-callout: none; }
   .touch { display: block; }
-  .hint { display: none; } /* keyboard hints are meaningless on touch */
   #net-status { bottom: auto; top: 96px; }
 }
 
