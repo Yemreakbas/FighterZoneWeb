@@ -87,5 +87,12 @@ export function createEffects(scene) {
     }
   }
 
-  return { spark, update, syncProjectiles };
+  function setProjectileColor(owner, color) {
+    const o = orbs[owner];
+    if (!o) return;
+    o.glow.material.color.setHex(color);
+    o.light.color.setHex(color);
+  }
+
+  return { spark, update, syncProjectiles, setProjectileColor };
 }

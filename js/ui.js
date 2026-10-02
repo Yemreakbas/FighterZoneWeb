@@ -2,7 +2,7 @@
 
 const $ = (id) => document.getElementById(id);
 
-const SCREENS = ['menu', 'lobby-host', 'lobby-join', 'result'];
+const SCREENS = ['menu', 'select', 'lobby-host', 'lobby-join', 'result'];
 
 /** Show one overlay screen, or `null` for the bare in-fight HUD. */
 export function showScreen(name) {
@@ -70,11 +70,29 @@ export function showCombo(side, count) {
   comboTimeouts[side] = setTimeout(() => el.classList.remove('show'), 1100);
 }
 
-/** Routes `data-action` button clicks to a handler map. */
+/**
+ * Build the character cards. Stats are shown relative to the strongest
+ * value of each stat across the roster.
+ */
+export function renderCharacters(characters) {
+  const max = (key) => Math.max(...characters.map((c) => c[key]));
+  const stat = (label, value, top) =>
+    `<div class="stat"><span>${label}</span><div class="bar"><i style="width:${Math.round((value / top) * 100)}%"></i></div></div>`;
+  $('char-grid').innerHTML = characters.map((c, i) => `
+    <button class="char-card" data-action="pick" data-char="${i}" style="--char-color:#${c.color.toString(16).padStart(6, '0')}">
+      <span class="name">${c.name}</span>
+      <span class="desc">${c.desc}</span>
+      ${stat('HIZ', c.speed, max('speed'))}
+      ${stat('GÜÇ', c.power, max('power'))}
+      ${stat('TOP', c.projectileSpeed, max('projectileSpeed'))}
+    </button>`).join('');
+}
+
+/** Routes `data-action` button clicks to a handler map (handler gets the button). */
 export function bindActions(handlers) {
   document.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-action]');
     if (!btn) return;
-    handlers[btn.dataset.action]?.();
+    handlers[btn.dataset.action]?.(btn);
   });
 }

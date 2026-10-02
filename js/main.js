@@ -1,5 +1,5 @@
 import { createStage } from './scene.js';
-import { MATCH, NET, TICK } from './config.js';
+import { CHARACTERS, MATCH, NET, TICK } from './config.js';
 import { createMatch } from './game.js';
 import { createFighter } from './fighter.js';
 import { createBot } from './bot.js';
@@ -41,8 +41,9 @@ let session = null;
  * play (and by the P2P host). Rendering interpolates between the last two
  * ticks so motion stays smooth on high refresh-rate displays.
  */
-function createLocalSession(names, gatherInputs, onTick) {
-  let match = createMatch(names);
+function createLocalSession(chars, gatherInputs, onTick) {
+  const names = chars.map((c) => CHARACTERS[c].name);
+  let match = createMatch(names, chars);
   let acc = 0;
   let prev = snapshotPositions(match.state);
   let events = [];
@@ -83,7 +84,7 @@ function createLocalSession(names, gatherInputs, onTick) {
       return view();
     },
     rematch() {
-      match = createMatch(names);
+      match = createMatch(names, chars);
       acc = 0;
       prev = snapshotPositions(match.state);
     },
@@ -121,10 +122,35 @@ function createTicker(fn, ms) {
   }
 }
 
+// ---- Character select -----------------------------------------------------
+
+/** Mode chosen in the menu, waiting for a character pick: 'solo' | 'host' | 'join'. */
+let pendingMode = null;
+let myChar = 0;
+
+const validChar = (c) => (Number.isInteger(c) && c >= 0 && c < CHARACTERS.length ? c : 0);
+const otherChar = (c) => (c + 1 + Math.floor(Math.random() * (CHARACTERS.length - 1))) % CHARACTERS.length;
+
+function openSelect(mode) {
+  pendingMode = mode;
+  ui.setMenuStatus('');
+  ui.showScreen('select');
+  document.querySelector(`.char-card[data-char="${myChar}"]`)?.focus();
+}
+
+function pickCharacter(btn) {
+  myChar = validChar(Number(btn?.dataset.char));
+  const mode = pendingMode;
+  pendingMode = null;
+  if (mode === 'solo') startSolo();
+  else if (mode === 'host') openHostLobby();
+  else if (mode === 'join') openJoinLobby();
+}
+
 function startSolo() {
   const bot = createBot(1);
   session = createLocalSession(
-    ['OYUNCU', 'BOT'],
+    [myChar, otherChar(myChar)],
     (state) => [keyboard.sample(), bot.think(state, TICK)],
   );
   enterFight();
@@ -135,7 +161,7 @@ function startSolo() {
 const HELD_KEYS = ['left', 'right', 'down', 'block'];
 const PRESS_MAP = { JUMP: 'jump', PUNCH: 'punch', KICK: 'kick', SPECIAL: 'special' };
 
-function startHost(link, room) {
+function startHost(link, room, chars) {
   const remote = {
     held: { left: false, right: false, down: false, block: false },
     pressed: { jump: false, punch: false, kick: false, special: false },
@@ -150,7 +176,7 @@ function startHost(link, room) {
   let tick = 0;
   let outbox = [];
   const local = createLocalSession(
-    ['OYUNCU 1', 'OYUNCU 2'],
+    chars,
     () => [keyboard.sample(), takeRemote()],
     (state, events) => {
       tick++;
@@ -230,6 +256,9 @@ function startClient(link, room) {
 
 /** Pending hostRoom/joinRoom handle while in a lobby screen. */
 let pendingRoom = null;
+/** Host-side handler for the client's { t: 'hello', char } before the match starts. */
+let awaitingHello = null;
+const HELLO_TIMEOUT_MS = 3000;
 
 const CLOSE_TEXT = {
   left: 'Rakip oyundan ayrıldı.',
@@ -243,7 +272,7 @@ function netHandlers(onConnected, onError) {
   return {
     onConnected,
     onError,
-    onData: (msg) => session?.onData?.(msg),
+    onData: (msg) => (session ? session.onData?.(msg) : awaitingHello?.(msg)),
     onClose: (reason) => {
       pendingRoom = null;
       leaveToMenu(CLOSE_TEXT[reason] || 'Bağlantı kapandı.');
@@ -258,7 +287,20 @@ function openHostLobby() {
   try {
     const room = hostRoom({
       ...netHandlers(
-        (link) => { pendingRoom = null; startHost(link, room); },
+        (link) => {
+          // Wait for the client's character pick; fall back to a random one
+          // if an older/misbehaving client never sends it.
+          ui.setHostStatus('Rakip bağlandı...');
+          const begin = (char) => {
+            if (!awaitingHello) return;
+            awaitingHello = null;
+            clearTimeout(timer);
+            pendingRoom = null;
+            startHost(link, room, [myChar, char]);
+          };
+          awaitingHello = (msg) => { if (msg.t === 'hello') begin(validChar(msg.char)); };
+          const timer = setTimeout(() => begin(otherChar(myChar)), HELLO_TIMEOUT_MS);
+        },
         (text) => { pendingRoom = null; ui.setHostStatus(text); },
       ),
       onCode: (code) => {
@@ -282,7 +324,11 @@ function connectToRoom() {
   ui.setJoinStatus('Bağlanıyor...');
   try {
     const room = joinRoom(code, netHandlers(
-      (link) => { pendingRoom = null; startClient(link, room); },
+      (link) => {
+        pendingRoom = null;
+        link.send({ t: 'hello', char: myChar });
+        startClient(link, room);
+      },
       (text) => { pendingRoom = null; ui.setJoinStatus(text); },
     ));
     pendingRoom = room;
@@ -298,7 +344,15 @@ function enterFight() {
   ui.showScreen(null);
 }
 
+function openJoinLobby() {
+  ui.setJoinStatus('');
+  ui.showScreen('lobby-join');
+  document.getElementById('join-code').focus();
+}
+
 function leaveToMenu(message = '') {
+  pendingMode = null;
+  awaitingHello = null;
   pendingRoom?.cancel();
   pendingRoom = null;
   session?.dispose?.();
@@ -370,13 +424,10 @@ function handleEvents(events) {
 // Menu wiring
 // ---------------------------------------------------------------------------
 ui.bindActions({
-  solo: startSolo,
-  host: openHostLobby,
-  join: () => {
-    ui.setJoinStatus('');
-    ui.showScreen('lobby-join');
-    document.getElementById('join-code').focus();
-  },
+  solo: () => openSelect('solo'),
+  host: () => openSelect('host'),
+  join: () => openSelect('join'),
+  pick: pickCharacter,
   connect: connectToRoom,
   rematch: () => {
     if (!session?.rematch) return;
@@ -388,7 +439,7 @@ ui.bindActions({
 });
 
 window.addEventListener('keydown', (e) => {
-  if (e.code === 'Escape' && (session || pendingRoom)) leaveToMenu();
+  if (e.code === 'Escape' && (session || pendingRoom || pendingMode)) leaveToMenu();
   if (e.code === 'KeyM' && !e.target.matches?.('input')) {
     const text = sound.toggleMute() ? 'SES KAPALI' : 'SES AÇIK';
     if (session) ui.announce(text, 800);
@@ -401,6 +452,20 @@ window.addEventListener('keydown', sound.unlock);
 document.getElementById('join-code').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') connectToRoom();
 });
+
+let shownChars = '';
+function applyCharacterColors(chars) {
+  const key = chars.join(',');
+  if (key === shownChars) return;
+  shownChars = key;
+  chars.forEach((c, i) => {
+    const color = (CHARACTERS[c] || CHARACTERS[0]).color;
+    views[i].setColor(color);
+    effects.setProjectileColor(i, color);
+  });
+}
+
+ui.renderCharacters(CHARACTERS);
 
 // ---------------------------------------------------------------------------
 // Main loop: requestAnimationFrame with clamped delta time so a background
@@ -415,6 +480,7 @@ function frame(now) {
   if (session) {
     const { state, events, positions } = session.update(dt);
     if (state) {
+      applyCharacterColors(state.chars || [0, 1]);
       state.fighters.forEach((f, i) => views[i].update(f, dt, positions[i].x, positions[i].y));
       stage.updateCamera(dt, positions[0].x, positions[1].x);
       effects.syncProjectiles(state.projectiles || [], dt);
@@ -422,6 +488,7 @@ function frame(now) {
       handleEvents(events);
     }
   } else {
+    applyCharacterColors([0, 1]);
     effects.syncProjectiles([], dt);
     // Attract mode: idle fighters and a slow camera sway behind the menu.
     menuFighters.forEach((f, i) => views[i].update(f, dt, f.x, f.y));

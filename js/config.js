@@ -80,6 +80,17 @@ export const PROJECTILE = {
   lifetime: 2.2,
 };
 
+/**
+ * Selectable fighters. Stats are multipliers on the shared base values so
+ * every move keeps the same frame data and only the feel changes.
+ * Names avoid Turkish-only letters: the pixel font has no glyphs for them.
+ */
+export const CHARACTERS = [
+  { id: 'kor',    name: 'KOR',    color: 0xc62828, desc: 'Güçlü ama yavaş',     speed: 0.9,  power: 1.15, projectileSpeed: 8 },
+  { id: 'ayaz',   name: 'AYAZ',   color: 0x1e5bd6, desc: 'Dengeli, hızlı top',   speed: 1.0,  power: 1.0,  projectileSpeed: 11.5 },
+  { id: 'kuzgun', name: 'KUZGUN', color: 0x7b2fbf, desc: 'Çevik ama kırılgan',   speed: 1.2,  power: 0.85, projectileSpeed: 9 },
+];
+
 // Crouching attacks hit this much lower.
 export const CROUCH_ATTACK_DROP = 0.5;
 // A button pressed while busy is remembered this long (input buffer).

@@ -1,4 +1,4 @@
-import { NET, TICK } from './config.js';
+import { CHARACTERS, NET, TICK } from './config.js';
 
 // State packets (host -> client) and client-side interpolation.
 //
@@ -14,6 +14,7 @@ export function encodeSnapshot(state, tick, events) {
     k: tick,
     s: {
       n: state.names,
+      ch: state.chars,
       r: state.round,
       tm: r3(state.timer),
       p: state.phase,
@@ -32,6 +33,7 @@ export function encodeSnapshot(state, tick, events) {
 
 const PHASES = new Set(['intro', 'fight', 'roundEnd', 'over']);
 const ACTIONS = new Set(['idle', 'walk', 'crouch', 'jump', 'block', 'punch', 'kick', 'special', 'hit', 'ko', 'win']);
+const validChar = (c) => (Number.isInteger(c) && c >= 0 && c < CHARACTERS.length ? c : 0);
 const num = (v, fallback = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
 
 /** Rebuild a renderer-friendly state from a packet, rejecting garbage. */
@@ -39,6 +41,7 @@ function decodeState(s) {
   if (!s || !Array.isArray(s.f) || s.f.length !== 2 || !PHASES.has(s.p)) return null;
   return {
     names: Array.isArray(s.n) ? s.n.slice(0, 2).map((x) => String(x).slice(0, 16)) : ['P1', 'P2'],
+    chars: Array.isArray(s.ch) ? [validChar(s.ch[0]), validChar(s.ch[1])] : [0, 1],
     round: num(s.r, 1),
     timer: num(s.tm),
     phase: s.p,

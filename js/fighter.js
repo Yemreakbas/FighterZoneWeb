@@ -1,4 +1,4 @@
-import { ARENA, ATTACKS, BODY, CROUCH_ATTACK_DROP, INPUT_BUFFER, MATCH, PHYSICS, PROJECTILE } from './config.js';
+import { ARENA, ATTACKS, BODY, CHARACTERS, CROUCH_ATTACK_DROP, INPUT_BUFFER, MATCH, PHYSICS, PROJECTILE } from './config.js';
 
 // Pure simulation of a single fighter. State is plain JSON-friendly data so
 // the host can serialize it straight into network snapshots. No Three.js here.
@@ -10,8 +10,11 @@ export const EMPTY_INPUT = Object.freeze({
   jump: false, punch: false, kick: false, special: false,
 });
 
-export function createFighter(x, facing) {
+const stats = (f) => CHARACTERS[f.char] || CHARACTERS[0];
+
+export function createFighter(x, facing, char = 0) {
   return {
+    char,              // index into CHARACTERS
     x, y: 0, vx: 0, vy: 0,
     facing,            // +1 looks toward +X, -1 toward -X
     hp: MATCH.maxHp,
@@ -99,7 +102,7 @@ function control(f, input, opp) {
   if (input.jump && !input.down && !input.block) {
     const dir = (input.right ? 1 : 0) - (input.left ? 1 : 0);
     f.vy = PHYSICS.jumpVelocity;
-    f.vx = dir * PHYSICS.jumpForwardSpeed;
+    f.vx = dir * PHYSICS.jumpForwardSpeed * stats(f).speed;
     f.grounded = false;
     f.airAttack = false;
     f.crouch = false;
@@ -127,7 +130,7 @@ function control(f, input, opp) {
 
   const dir = (input.right ? 1 : 0) - (input.left ? 1 : 0);
   const backwards = dir !== 0 && dir !== f.facing;
-  f.vx = dir * PHYSICS.walkSpeed * (backwards ? PHYSICS.backWalkFactor : 1);
+  f.vx = dir * PHYSICS.walkSpeed * stats(f).speed * (backwards ? PHYSICS.backWalkFactor : 1);
   setAction(f, dir ? 'walk' : 'idle');
 }
 
@@ -231,7 +234,7 @@ export function findHit(attacker, defender) {
 /** Apply a contact from findHit. Returns the hit event. */
 export function applyContact({ attacker, defender, move, dir, x, y }) {
   attacker.attackHit = true;
-  const blocked = applyHit(ATTACKS[move], dir, defender);
+  const blocked = applyHit(ATTACKS[move], dir, defender, stats(attacker).power);
   return { type: 'hit', blocked, heavy: move === 'kick', x, y };
 }
 
@@ -240,15 +243,15 @@ export function applyContact({ attacker, defender, move, dir, x, y }) {
  * defender. A block only works on the ground while facing the incoming
  * attack. Returns true if it was blocked.
  */
-function applyHit(a, dir, defender) {
+function applyHit(a, dir, defender, power = 1) {
   const blocked = defender.action === 'block' && defender.grounded && defender.facing === -dir;
 
   if (blocked) {
-    defender.hp = Math.max(0, defender.hp - a.chip);
+    defender.hp = Math.max(0, defender.hp - a.chip * power);
     defender.stun = a.blockstun;
     defender.vx = dir * a.knockback * 0.4;
   } else {
-    defender.hp = Math.max(0, defender.hp - a.damage);
+    defender.hp = Math.max(0, defender.hp - a.damage * power);
     defender.action = 'hit';
     defender.t = 0;
     defender.stun = a.hitstun;
@@ -260,7 +263,7 @@ function applyHit(a, dir, defender) {
 }
 
 // ---------------------------------------------------------------------------
-// Projectiles: { owner, x, y, vx, life }. The projectile's box is a square
+// Projectiles: { owner, x, y, vx, life, power }. The projectile's box is a square
 // of side 2*radius around its centre.
 // ---------------------------------------------------------------------------
 
@@ -272,8 +275,9 @@ export function spawnProjectile(f, owner) {
     owner,
     x: f.x + f.facing * PROJECTILE.spawnOffset,
     y: f.y + PROJECTILE.height,
-    vx: f.facing * PROJECTILE.speed,
+    vx: f.facing * stats(f).projectileSpeed,
     life: PROJECTILE.lifetime,
+    power: stats(f).power,
   };
 }
 
@@ -286,7 +290,7 @@ export function projectileBox(p) {
 export function projectileHit(p, defender) {
   if (defender.action === 'ko') return null;
   if (!overlaps(projectileBox(p), hurtbox(defender))) return null;
-  const blocked = applyHit(ATTACKS.special, Math.sign(p.vx), defender);
+  const blocked = applyHit(ATTACKS.special, Math.sign(p.vx), defender, p.power);
   return { type: 'hit', blocked, heavy: true, x: p.x, y: p.y };
 }
 

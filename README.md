@@ -19,6 +19,16 @@ python -m http.server 8080
 - **Tek oyunculu (Bot):** Bot her roundda biraz daha hızlı tepki veriyor, daha sık blokluyor ve daha çok kombo yapıyor.
 - **Oda Kur / Odaya Katıl (P2P):** Host 4 haneli bir kod alır, rakip bu kodla bağlanır. Simülasyon host'ta çalışır. Client sadece tuş girdisi gönderir ve host'tan gelen durumu ~100 ms gecikmeyle ara değerleyerek çizer.
 
+## Karakterler
+
+| Karakter | Özellik |
+|----------|---------|
+| KOR | Güçlü ama yavaş, yavaş enerji topu |
+| AYAZ | Dengeli, en hızlı enerji topu |
+| KUZGUN | Çevik ama vuruşları zayıf |
+
+Değerler `js/config.js` içindeki `CHARACTERS` listesinde. Yeni karakter eklemek için listeye bir satır eklemen yeterli, seçim ekranı otomatik güncellenir.
+
 ## Kontroller
 
 | Tuş | Aksiyon |

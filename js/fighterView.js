@@ -113,6 +113,7 @@ export function createFighterView(scene, color) {
     root,
     update,
     flash: () => { flashT = 0.08; },
+    setColor: (color) => mats.cloth.color.setHex(color),
   };
 }
 

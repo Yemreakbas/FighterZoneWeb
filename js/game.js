@@ -12,9 +12,11 @@ import {
 
 const START_X = 2.5;
 
-export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2']) {
+/** `chars` are indices into CHARACTERS for player 1 and 2. */
+export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1]) {
   const state = {
     names,
+    chars,
     round: 1,
     timer: MATCH.roundTime,
     phase: 'intro',
@@ -45,7 +47,7 @@ export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2']) {
   }
 
   function resetRound() {
-    state.fighters = [createFighter(-START_X, 1), createFighter(START_X, -1)];
+    state.fighters = [createFighter(-START_X, 1, chars[0]), createFighter(START_X, -1, chars[1])];
     state.projectiles = [];
     combo = [0, 0];
     state.timer = MATCH.roundTime;
