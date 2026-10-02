@@ -1,0 +1,184 @@
+:root {
+  --bg: #07070d;
+  --panel: rgba(18, 18, 32, 0.55);
+  --panel-border: rgba(255, 255, 255, 0.12);
+  --accent: #ff3b3b;
+  --accent-2: #ffd23f;
+  --text: #f2f2f7;
+  --muted: #9a9ab0;
+  --hp: linear-gradient(90deg, #ffd23f, #ff7a1a);
+  --hp-low: linear-gradient(90deg, #ff3b3b, #a80000);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Rajdhani', system-ui, sans-serif;
+  user-select: none;
+}
+
+#game-container { position: fixed; inset: 0; }
+#game-container canvas { display: block; }
+
+.hidden { display: none !important; }
+
+/* ---------- Menu screens ---------- */
+.screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: radial-gradient(ellipse at center, rgba(7, 7, 13, 0.2), rgba(7, 7, 13, 0.85));
+  z-index: 10;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  width: min(420px, 100%);
+  padding: 36px 28px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 16px;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.logo {
+  font-family: 'Press Start 2P', monospace;
+  font-size: clamp(20px, 6vw, 32px);
+  letter-spacing: 2px;
+  margin-bottom: 12px;
+  text-shadow: 0 0 18px rgba(255, 59, 59, 0.6);
+}
+.logo span { color: var(--accent); }
+
+h2 {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 16px;
+  letter-spacing: 1px;
+}
+
+.btn {
+  width: 100%;
+  padding: 14px 18px;
+  font: 700 18px 'Rajdhani', sans-serif;
+  letter-spacing: 1px;
+  color: var(--text);
+  background: linear-gradient(180deg, rgba(255, 59, 59, 0.9), rgba(170, 20, 20, 0.9));
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: transform 0.1s, filter 0.15s;
+}
+.btn:hover { filter: brightness(1.15); }
+.btn:active { transform: scale(0.98); }
+.btn.secondary { background: rgba(255, 255, 255, 0.08); }
+
+.hint { color: var(--muted); font-size: 14px; text-align: center; margin-top: 6px; }
+.status { color: var(--muted); min-height: 1.2em; text-align: center; }
+
+.room-code {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 34px;
+  letter-spacing: 6px;
+  color: var(--accent-2);
+  padding: 10px 0;
+}
+
+.code-input {
+  width: 100%;
+  padding: 12px;
+  font: 24px 'Press Start 2P', monospace;
+  text-align: center;
+  letter-spacing: 6px;
+  color: var(--accent-2);
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  outline: none;
+}
+.code-input:focus { border-color: var(--accent-2); }
+
+/* ---------- HUD ---------- */
+#hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.hud-bar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+}
+
+.fighter-info { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+.fighter-info.right { align-items: flex-end; }
+
+.fighter-name {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 12px;
+  text-shadow: 2px 2px 0 #000;
+}
+
+.health {
+  width: 100%;
+  height: 22px;
+  background: rgba(0, 0, 0, 0.6);
+  border: 2px solid #fff;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.health-fill {
+  height: 100%;
+  width: 100%;
+  background: var(--hp);
+  transition: width 0.15s ease-out;
+}
+.health-fill.low { background: var(--hp-low); }
+.fighter-info.right .health { display: flex; justify-content: flex-end; }
+
+.round-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 10px;
+  gap: 6px;
+  min-width: 70px;
+}
+#timer { font-size: 26px; color: var(--accent-2); text-shadow: 2px 2px 0 #000; }
+
+#announcer {
+  position: absolute;
+  top: 40%;
+  width: 100%;
+  text-align: center;
+  font-family: 'Press Start 2P', monospace;
+  font-size: clamp(28px, 7vw, 64px);
+  color: var(--accent-2);
+  text-shadow: 4px 4px 0 #000, 0 0 30px rgba(255, 210, 63, 0.5);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+#announcer.show { opacity: 1; }
+
+@media (max-width: 600px) {
+  .fighter-name { font-size: 9px; }
+  .health { height: 16px; }
+  #timer { font-size: 18px; }
+}

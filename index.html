@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FighterZone</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E%F0%9F%A5%8A%3C/text%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./style.css" />
+
+  <!-- Three.js is loaded as an ES module through the import map (no build step). -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+      }
+    }
+  </script>
+  <!-- PeerJS exposes a global `Peer` constructor. -->
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js" defer></script>
+</head>
+<body>
+  <div id="game-container"></div>
+
+  <!-- ===== HUD (in-fight overlay) ===== -->
+  <div id="hud" class="hidden">
+    <div class="hud-bar">
+      <div class="fighter-info left">
+        <span class="fighter-name" id="p1-name">OYUNCU 1</span>
+        <div class="health"><div class="health-fill" id="p1-health"></div></div>
+      </div>
+      <div class="round-info">
+        <span id="round-label">ROUND 1</span>
+        <span id="timer">99</span>
+      </div>
+      <div class="fighter-info right">
+        <span class="fighter-name" id="p2-name">OYUNCU 2</span>
+        <div class="health"><div class="health-fill" id="p2-health"></div></div>
+      </div>
+    </div>
+    <div id="announcer"></div>
+  </div>
+
+  <!-- ===== Main menu ===== -->
+  <div id="menu" class="screen">
+    <div class="panel">
+      <h1 class="logo">FIGHTER<span>ZONE</span></h1>
+      <button class="btn" data-action="solo">TEK OYUNCULU (BOT)</button>
+      <button class="btn" data-action="host">ODA KUR (HOST)</button>
+      <button class="btn" data-action="join">ODAYA KATIL (JOIN)</button>
+      <p class="hint">A/D: Hareket · W: Zıpla · S: Eğil · J: Yumruk · K: Tekme · L: Blok</p>
+    </div>
+  </div>
+
+  <!-- ===== Host lobby ===== -->
+  <div id="lobby-host" class="screen hidden">
+    <div class="panel">
+      <h2>Oda Kodu</h2>
+      <div class="room-code" id="room-code">----</div>
+      <p class="status" id="host-status">Rakip bekleniyor...</p>
+      <button class="btn secondary" data-action="back">GERİ</button>
+    </div>
+  </div>
+
+  <!-- ===== Join lobby ===== -->
+  <div id="lobby-join" class="screen hidden">
+    <div class="panel">
+      <h2>Odaya Katıl</h2>
+      <input id="join-code" class="code-input" type="text" inputmode="numeric" maxlength="6" placeholder="Kod" autocomplete="off" />
+      <button class="btn" data-action="connect">BAĞLAN</button>
+      <p class="status" id="join-status"></p>
+      <button class="btn secondary" data-action="back">GERİ</button>
+    </div>
+  </div>
+
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>
