@@ -453,6 +453,10 @@ function handleEvents(events) {
       effects.spark(num(e.x), num(e.y), { blocked: !!e.blocked, heavy: !!e.heavy });
       if (!e.blocked) views[e.target]?.flash();
       stage.shake(e.blocked ? 0.06 : e.heavy ? 0.28 : 0.14);
+    } else if (e.type === 'slam') {
+      sound.play('heavy');
+      effects.spark(num(e.x), 0.15, { heavy: true });
+      stage.shake(0.35);
     } else if (e.type === 'combo') {
       if (e.attacker === 0 || e.attacker === 1) ui.showCombo(e.attacker, Number(e.count) | 0);
     } else if (e.type === 'fireball') {

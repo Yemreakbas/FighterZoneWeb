@@ -1,6 +1,6 @@
 import { ARENA, HITSTOP, MATCH, ROUND_FLOW } from './config.js';
 import {
-  EMPTY_INPUT, applyContact, bufferPress, createFighter, findHit, hurtbox, overlaps, projectileBox,
+  EMPTY_INPUT, applyContact, applyThrow, bufferPress, createFighter, findHit, findThrow, hurtbox, overlaps, projectileBox,
   projectileHit, separate, spawnProjectile, stepFighter,
 } from './fighter.js';
 
@@ -118,8 +118,12 @@ export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1], ar
     // only the winner moves.
     const live = state.phase === 'fight';
     const controls = (i) => live || (state.phase === 'finish' && i === state.roundWinner);
+    const airborneThrown = state.fighters.map((f) => f.action === 'thrown');
     stepFighter(a, controls(0) ? inputs[0] : EMPTY_INPUT, b, dt);
     stepFighter(b, controls(1) ? inputs[1] : EMPTY_INPUT, a, dt);
+    state.fighters.forEach((f, i) => {
+      if (airborneThrown[i] && f.grounded) emit({ type: 'slam', target: i, x: f.x });
+    });
     separate(a, b);
     stepProjectiles(dt, live);
 
@@ -139,6 +143,12 @@ export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1], ar
         .filter((c) => c.contact);
       for (const { contact, target, wasStunned } of contacts) {
         landed(target, applyContact(contact), wasStunned);
+      }
+      // Throws resolve after strikes: a fighter just hit is no longer
+      // grabbable, and a thrower who got hit has lost the grab.
+      for (const [atk, def, target] of [[a, b, 1], [b, a, 0]]) {
+        const grab = findThrow(atk, def);
+        if (grab) landed(target, applyThrow(grab), false);
       }
 
       state.timer = Math.max(0, state.timer - dt);

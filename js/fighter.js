@@ -3,8 +3,8 @@ import { ARENA, ATTACKS, BODY, CHARACTERS, CROUCH_ATTACK_DROP, INPUT_BUFFER, MAT
 // Pure simulation of a single fighter. State is plain JSON-friendly data so
 // the host can serialize it straight into network snapshots. No Three.js here.
 //
-// Actions: idle | walk | crouch | jump | block | punch | kick | special | hit | ko | win
-//          | dazed (FINISH HIM) | fatality
+// Actions: idle | walk | crouch | jump | block | punch | kick | special | throw | hit
+//          | thrown (airborne after being thrown) | ko | win | dazed (FINISH HIM) | fatality
 
 export const EMPTY_INPUT = Object.freeze({
   left: false, right: false, down: false, block: false,
@@ -30,7 +30,9 @@ export function createFighter(x, facing, char = 0) {
   };
 }
 
-const BUSY = new Set(['punch', 'kick', 'special', 'hit', 'ko', 'win', 'dazed', 'fatality']);
+const BUSY = new Set(['punch', 'kick', 'special', 'throw', 'hit', 'thrown', 'ko', 'win', 'dazed', 'fatality']);
+// States a grounded opponent can be grabbed from (not in hit- or blockstun).
+const THROWABLE = new Set(['idle', 'walk', 'crouch', 'block']);
 
 export function isAttacking(f) {
   return f.action === 'punch' || f.action === 'kick';
@@ -85,7 +87,7 @@ export function stepFighter(f, input, opp, dt) {
     if (f.stun <= 0 && f.grounded) setAction(f, 'idle');
   } else if (f.action === 'block' && f.stun > 0) {
     f.stun -= dt; // blockstun: locked in block
-  } else if (isAttacking(f) || f.action === 'special') {
+  } else if (isAttacking(f) || f.action === 'special' || f.action === 'throw') {
     const a = ATTACKS[f.action];
     if (f.t >= a.startup + a.active + a.recovery) {
       setAction(f, f.grounded ? (f.crouch ? 'crouch' : 'idle') : 'jump');
@@ -123,8 +125,12 @@ function control(f, input, opp) {
   f.crouch = input.down;
 
   if (f.buffer) {
-    if (f.buffer.type === 'special') f.crouch = false; // always thrown standing
-    startAttack(f, f.buffer.type);
+    // Forward + punch next to a grabbable opponent becomes a throw.
+    const forward = f.facing > 0 ? input.right : input.left;
+    const grab = f.buffer.type === 'punch' && forward && canBeThrown(opp)
+      && Math.abs(opp.x - f.x) <= ATTACKS.throw.reach;
+    if (f.buffer.type === 'special' || grab) f.crouch = false; // always done standing
+    startAttack(f, grab ? 'throw' : f.buffer.type);
     return;
   }
   if (input.block) {
@@ -145,6 +151,7 @@ function control(f, input, opp) {
 }
 
 function integrate(f, dt) {
+  // A thrown fighter keeps its toss speed until it lands.
   if (f.action === 'hit' || f.action === 'ko' || f.action === 'block' || f.action === 'dazed') {
     f.vx *= Math.exp(-PHYSICS.knockbackDecay * dt);
   }
@@ -160,6 +167,13 @@ function integrate(f, dt) {
     f.grounded = true;
     if (wasAirborne) {
       f.airAttack = false;
+      if (f.action === 'thrown') {
+        // Hitting the floor: a short stagger before getting back up.
+        f.vx = 0;
+        f.action = 'hit';
+        f.t = 0;
+        f.stun = ATTACKS.throw.landStun;
+      }
       // Landing cancels an aerial attack and ends the jump.
       if (f.action === 'jump' || isAttacking(f)) {
         f.vx = 0;
@@ -273,6 +287,45 @@ function applyHit(a, dir, defender, power = 1) {
 }
 
 // ---------------------------------------------------------------------------
+// Throws
+// ---------------------------------------------------------------------------
+
+function canBeThrown(f) {
+  return f.grounded && THROWABLE.has(f.action) && !(f.action === 'block' && f.stun > 0);
+}
+
+/**
+ * Detection only: returns a throw contact if `attacker`'s grab is live and
+ * `defender` is in reach and grabbable at this moment, otherwise null.
+ */
+export function findThrow(attacker, defender) {
+  if (attacker.action !== 'throw' || attacker.attackHit) return null;
+  const a = ATTACKS.throw;
+  if (attacker.t < a.startup || attacker.t >= a.startup + a.active) return null;
+  if (!canBeThrown(defender) || Math.abs(defender.x - attacker.x) > a.reach) return null;
+  return { attacker, defender };
+}
+
+/** Apply a contact from findThrow: damage and toss over the shoulder. */
+export function applyThrow({ attacker, defender }) {
+  const a = ATTACKS.throw;
+  attacker.attackHit = true;
+  defender.hp = Math.max(0, defender.hp - a.damage * stats(attacker).power);
+  defender.action = 'thrown';
+  defender.t = 0;
+  defender.stun = 0;
+  defender.crouch = false;
+  defender.buffer = null;
+  defender.grounded = false;
+  defender.vy = a.tossVy;
+  defender.vx = -attacker.facing * a.tossVx;
+  return {
+    type: 'hit', blocked: false, heavy: true, throw: true,
+    x: (attacker.x + defender.x) / 2, y: 1.2,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Projectiles: { owner, x, y, vx, life, power }. The projectile's box is a square
 // of side 2*radius around its centre.
 // ---------------------------------------------------------------------------
@@ -308,6 +361,7 @@ export function projectileHit(p, defender) {
 export function separate(a, b) {
   const dx = b.x - a.x;
   if (Math.abs(a.y - b.y) > BODY.height * 0.6) return; // one is jumping over
+  if (a.action === 'thrown' || b.action === 'thrown') return; // flying over the thrower
   if (Math.abs(dx) >= PHYSICS.minSeparation) return;
 
   const dir = dx === 0 ? -a.facing || 1 : Math.sign(dx);

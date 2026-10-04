@@ -85,8 +85,10 @@ export function createFighterView(scene, color) {
     body.rotation.y += (targetYaw - body.rotation.y) * (1 - Math.exp(-14 * dt));
 
     const target = computePose(f, animTime);
-    const rate = f.action === 'punch' || f.action === 'kick' || f.action === 'special' ? 45 : 18;
+    const rate = SNAPPY.has(f.action) ? 45 : 18;
     const k = 1 - Math.exp(-rate * dt);
+    // A finished flip is the same as no flip: unwrap so landing doesn't spin back.
+    if (f.action !== 'thrown' && Math.abs(cur.tilt) > Math.PI) cur.tilt += Math.sign(cur.tilt) * -2 * Math.PI;
     for (const key in cur) cur[key] += (target[key] - cur[key]) * k;
 
     const near = f.facing > 0 ? 'R' : 'L';
@@ -126,6 +128,9 @@ function basePose() {
     nearHip: -0.45, nearKnee: 0.6, farHip: 0.15, farKnee: 0.45,
   };
 }
+
+// Actions whose pose changes fast enough to need quicker easing.
+const SNAPPY = new Set(['punch', 'kick', 'special', 'throw', 'thrown']);
 
 const lerp = (a, b, t) => a + (b - a) * t;
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
@@ -221,6 +226,35 @@ function computePose(f, time) {
         p.spineX = 0.1 + e * 0.15;
       }
       p.nearHip = -0.6; p.nearKnee = 0.7; p.farHip = 0.35; p.farKnee = 0.3;
+      break;
+    }
+
+    case 'throw': {
+      // Reach out and grab, then heave the opponent over the shoulder.
+      const a = ATTACKS.throw;
+      const grab = clamp01(f.t / a.startup);
+      const heave = clamp01((f.t - a.startup) / (a.active + a.recovery * 0.4));
+      const done = clamp01((f.t - a.startup - a.active - a.recovery * 0.4) / (a.recovery * 0.6));
+      const up = heave * (1 - done);
+      p.nearShoulder = p.farShoulder = lerp(lerp(-0.8, -1.5, grab), -2.9, up);
+      p.nearElbow = p.farElbow = lerp(lerp(-1.8, -0.4, grab), -0.6, up);
+      p.spineX = lerp(0.1 + grab * 0.25, -0.45, up);
+      p.spineY = -up * 0.6;
+      p.nearHip = -0.7; p.nearKnee = 0.8; p.farHip = 0.3; p.farKnee = 0.35;
+      p.hipsY = 0.9;
+      break;
+    }
+
+    case 'thrown': {
+      // Tumbling backward through the air, limbs flailing.
+      // One full backflip over the toss airtime (2 * tossVy / |gravity|).
+      const spin = clamp01(f.t / 0.5);
+      p.tilt = -Math.PI * 2 * spin;
+      p.hipsY = 0.95;
+      p.spineX = -0.4; p.headX = -0.4;
+      p.nearShoulder = -2.4 + Math.sin(time * 18) * 0.5; p.nearElbow = -0.4;
+      p.farShoulder = -2.0 - Math.sin(time * 18) * 0.5; p.farElbow = -0.5;
+      p.nearHip = -0.9; p.nearKnee = 1.0; p.farHip = -0.3; p.farKnee = 0.6;
       break;
     }
 

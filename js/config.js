@@ -69,6 +69,18 @@ ATTACKS.special = {
 };
 
 /**
+ * Throw: forward + punch up close. It ignores block, so it is the answer to
+ * a turtling opponent; strikes beat it (a fighter in hitstun can't be
+ * grabbed) and a whiffed throw has a long, punishable recovery. The victim
+ * is tossed over the thrower's shoulder and lands behind them.
+ */
+ATTACKS.throw = {
+  startup: 0.1, active: 0.04, recovery: 0.5,
+  damage: 13, reach: 1.15,
+  tossVx: 5, tossVy: 8, landStun: 0.4,
+};
+
+/**
  * Projectile travels at chest height: crouching (hurtbox top 1.15) ducks
  * under it and jumping clears it. One projectile per fighter at a time.
  */

@@ -48,6 +48,16 @@ Tüm yollar göreli olduğu için oyun hangi klasörde olursa olsun çalışır.
 - **Tek oyunculu (Bot):** Bot her roundda biraz daha hızlı tepki veriyor, daha sık blokluyor ve daha çok kombo yapıyor.
 - **Oda Kur / Odaya Katıl (P2P):** Host 4 haneli bir kod alır, rakip bu kodla bağlanır. Simülasyon host'ta çalışır. Client her karede numaralı girdisini gönderir ve kendi karakterini anında yerelde tahmin eder (client prediction). Host'tan gelen durumla karşılaştırıp gerekirse yumuşakça düzeltir. Rakibi ise bağlantı kalitesine göre 50-150 ms arası ayarlanan bir tamponla ara değerleyerek çizer.
 
+## Fırlatma
+
+Rakibe yapışıkken **ileri + yumruk** onu tutup omzunun üstünden arkana fırlatır (13 hasar). Fırlatma bloğu deler, yani sürekli blok yapan rakibin cevabıdır. Karşılığında:
+
+- Vuruş yemekte (hitstun) olan, havadaki ya da blok sersemliğindeki rakip tutulamaz.
+- Önce gelen yumruk/tekme fırlatmayı bozar.
+- Boşa giden fırlatmanın toparlanması uzundur, ceza yersin.
+
+Bot da blok yapan ya da eğilip bekleyen rakibe fırlatma dener.
+
 ## FINISH HIM
 
 Maçı belirleyen K.O.'da rakip yere düşmez, sersemlemiş halde ayakta kalır ve **FINISH HIM!** anonsu gelir. Kazananın 4 saniyesi var:

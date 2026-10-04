@@ -96,6 +96,49 @@ test('character power scales damage', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Throws
+// ---------------------------------------------------------------------------
+
+// Fighter 0 stands at x=0 facing +X, so "forward" is right.
+const grabAt0 = (t) => (t === 0 ? { right: true, punch: true } : {});
+
+test('forward + punch up close throws through a block', () => {
+  const m = fightAt(0, 1);
+  const ev = run(m, 90, (t) => [grabAt0(t), { block: true }]);
+  const [grab] = hits(ev);
+  assert.equal(grab?.throw, true);
+  assert.equal(grab.blocked, false);
+  assert.equal(m.state.fighters[1].hp, MATCH.maxHp - ATTACKS.throw.damage);
+  assert.ok(ev.some((e) => e.type === 'slam' && e.target === 1), 'expected a landing slam');
+  assert.ok(m.state.fighters[1].x < m.state.fighters[0].x, 'victim lands behind the thrower');
+  assert.ok(m.state.fighters[1].grounded);
+});
+
+test('forward + punch out of throw range is a normal punch', () => {
+  const m = fightAt(0, 2);
+  run(m, 1, (t) => [grabAt0(t), {}]);
+  assert.equal(m.state.fighters[0].action, 'punch');
+});
+
+test('a faster strike beats a throw attempt', () => {
+  const m = fightAt(0, 1);
+  const ev = hits(run(m, 40, (t) => [grabAt0(t), t === 0 ? { punch: true } : {}]));
+  assert.ok(!ev.some((e) => e.throw));
+  assert.equal(m.state.fighters[0].hp, MATCH.maxHp - ATTACKS.punch.damage);
+  assert.equal(m.state.fighters[1].hp, MATCH.maxHp);
+});
+
+test('a throw whiffs on a jumping opponent and leaves the thrower open', () => {
+  const m = fightAt(0, 1);
+  const a = ATTACKS.throw;
+  const recoveryTicks = Math.floor((a.startup + a.active + a.recovery) / TICK) - 2;
+  const ev = hits(run(m, recoveryTicks, (t) => [grabAt0(t), t === 0 ? { jump: true } : {}]));
+  assert.equal(ev.length, 0);
+  assert.equal(m.state.fighters[1].hp, MATCH.maxHp);
+  assert.equal(m.state.fighters[0].action, 'throw', 'still recovering from the whiff');
+});
+
+// ---------------------------------------------------------------------------
 // Projectiles
 // ---------------------------------------------------------------------------
 

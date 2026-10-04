@@ -7,6 +7,7 @@ import { EMPTY_INPUT, isAttacking } from './fighter.js';
 
 const PUNCH_RANGE = ATTACKS.punch.reach - 0.1;
 const KICK_RANGE = ATTACKS.kick.reach - 0.1;
+const THROW_RANGE = ATTACKS.throw.reach - 0.1;
 
 export function createBot(index) {
   let time = 0;
@@ -45,6 +46,14 @@ export function createBot(index) {
       const r = rand();
       if (dist < 4.5 && r < 0.06 + lvl.aggression * 0.08) press('jump');
       intent = r < 0.25 + lvl.aggression * 0.7 ? 'approach' : r < 0.9 ? 'hold' : 'retreat';
+      return;
+    }
+
+    // A turtling opponent gets grabbed: block doesn't stop a throw.
+    const turtling = opp.grounded && (opp.action === 'block' || opp.action === 'crouch');
+    if (turtling && rand() < lvl.aggression * 0.7) {
+      intent = dist <= THROW_RANGE ? 'hold' : 'approach';
+      press('throw', dist <= THROW_RANGE ? 0 : 0.15);
       return;
     }
 
@@ -117,13 +126,21 @@ export function createBot(index) {
 
     // Fire scheduled presses (one per tick so each lands in its own frame).
     const due = queued.findIndex((q) => time >= q.at);
-    if (due >= 0) input[queued.splice(due, 1)[0].type] = true;
+    if (due >= 0) {
+      const { type } = queued.splice(due, 1)[0];
+      if (type === 'throw') {
+        // Forward + punch; only a throw if still in reach, otherwise a punch.
+        input.punch = true;
+        input[toward > 0 ? 'right' : 'left'] = true;
+      } else {
+        input[type] = true;
+      }
+    }
 
     switch (intent) {
       case 'approach':
         // Walk in bursts: slower levels move a smaller fraction of the time.
-        if ((time % 1) < lvl.speed) input[toward > 0 ? 'right' : 'left'] = true;
-        if (dist < PUNCH_RANGE) intent = 'hold';
+        if ((time % 1) < lvl.speed) input[toward > 0 ? 'right' : 'left'] = true;        if (dist < PUNCH_RANGE) intent = 'hold';
         break;
       case 'retreat':
         input[toward > 0 ? 'left' : 'right'] = true;
