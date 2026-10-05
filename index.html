@@ -56,6 +56,7 @@
     <div id="hint"></div>
     <div class="combo left" id="combo-0"></div>
     <div class="combo right" id="combo-1"></div>
+    <div id="train-info" class="hidden"></div>
     <div id="net-status"></div>
 
     <!-- Touch controls (shown only on touch devices). data-hold = held key,
@@ -82,6 +83,7 @@
     <div class="panel">
       <h1 class="logo">FIGHTER<span>ZONE</span></h1>
       <button class="btn" data-action="solo">TEK OYUNCULU (BOT)</button>
+      <button class="btn" data-action="training">ANTRENMAN</button>
       <button class="btn" data-action="host">ODA KUR (HOST)</button>
       <button class="btn" data-action="join">ODAYA KATIL (JOIN)</button>
       <button class="btn secondary" data-action="help">NASIL OYNANIR</button>
@@ -94,6 +96,19 @@
     <div class="panel wide">
       <h2>KARAKTER</h2>
       <div class="char-grid" id="char-grid"></div>
+      <div class="difficulty" id="difficulty" role="group" aria-label="Bot zorluğu">
+        <span class="label">ZORLUK</span>
+        <button class="seg" data-action="difficulty" data-level="0">KOLAY</button>
+        <button class="seg" data-action="difficulty" data-level="1">NORMAL</button>
+        <button class="seg" data-action="difficulty" data-level="2">ZOR</button>
+      </div>
+      <div class="difficulty" id="dummy" role="group" aria-label="Kukla davranışı">
+        <span class="label">KUKLA</span>
+        <button class="seg" data-action="dummy" data-mode="stand">DUR</button>
+        <button class="seg" data-action="dummy" data-mode="block">BLOK</button>
+        <button class="seg" data-action="dummy" data-mode="crouch">EĞİL</button>
+        <button class="seg" data-action="dummy" data-mode="jump">ZIPLA</button>
+      </div>
       <button class="btn secondary" data-action="back">GERİ</button>
     </div>
   </div>

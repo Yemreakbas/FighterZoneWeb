@@ -4,10 +4,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { ARENA, ARENAS, ATTACKS, CHARACTERS, MATCH, NET, PHYSICS, TICK } from '../js/config.js';
+import { ARENA, ARENAS, ATTACKS, BOT_DIFFICULTIES, BOT_LEVELS, CHARACTERS, MATCH, NET, PHYSICS, TICK, TRAINING } from '../js/config.js';
 import { EMPTY_INPUT } from '../js/fighter.js';
 import { createMatch } from '../js/game.js';
-import { createBot } from '../js/bot.js';
+import { botLevel, createBot } from '../js/bot.js';
 import {
   createInputQueue, createInterpolator, decodeAuthority, decodeInput, encodeInput,
   encodeSnapshot, targetDelay,
@@ -139,6 +139,41 @@ test('a throw whiffs on a jumping opponent and leaves the thrower open', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Training
+// ---------------------------------------------------------------------------
+
+function trainingAt(x0, x1) {
+  const m = createMatch(['A', 'B'], [1, 1], 0, { training: true });
+  while (m.state.phase !== 'fight') m.step([EMPTY_INPUT, EMPTY_INPUT], TICK);
+  m.drainEvents();
+  m.state.fighters[0].x = x0;
+  m.state.fighters[1].x = x1;
+  return m;
+}
+
+test('training reports combo damage and refills health afterwards', () => {
+  const m = trainingAt(0, 0.9);
+  const ev = run(m, 60, (t) => [t % 4 === 0 && t < 40 ? { punch: true } : {}, {}]);
+  const totals = ev.filter((e) => e.type === 'damage' && e.target === 1).map((e) => e.total);
+  assert.ok(totals.length >= 2, `expected several damage reports, got ${totals}`);
+  assert.ok(totals.every((v, i) => i === 0 || v > totals[i - 1]), 'running total grows');
+  assert.ok(m.state.fighters[1].hp < MATCH.maxHp);
+  run(m, Math.ceil(TRAINING.refillDelay / TICK) + 30);
+  assert.equal(m.state.fighters[1].hp, MATCH.maxHp);
+});
+
+test('training never ends: no timer, no K.O.', () => {
+  const m = trainingAt(0, 0.9);
+  m.state.fighters[1].hp = 1;
+  run(m, 30, press('kick'));
+  run(m, Math.ceil(MATCH.roundTime / TICK) + 60);
+  assert.equal(m.state.phase, 'fight');
+  assert.equal(m.state.timer, MATCH.roundTime);
+  assert.ok(m.state.fighters[1].hp > 0);
+  assert.notEqual(m.state.fighters[1].action, 'ko');
+});
+
+// ---------------------------------------------------------------------------
 // Projectiles
 // ---------------------------------------------------------------------------
 
@@ -191,6 +226,19 @@ test('hit-stop freezes movement right after a clean hit', () => {
   const x = m.state.fighters[1].x;
   run(m, 2);
   assert.equal(m.state.fighters[1].x, x);
+});
+
+test('bot difficulty climbs per round within its range', () => {
+  BOT_DIFFICULTIES.forEach((d, i) => {
+    assert.equal(botLevel(i, 1), BOT_LEVELS[d.start]);
+    assert.equal(botLevel(i, 99), BOT_LEVELS[d.cap], 'stays at the cap in long matches');
+  });
+  // Harder settings are never weaker than easier ones in the same round.
+  for (let round = 1; round <= 3; round++) {
+    const reactions = BOT_DIFFICULTIES.map((_, i) => botLevel(i, round).reaction);
+    assert.deepEqual([...reactions].sort((x, y) => y - x), reactions);
+  }
+  assert.equal(botLevel(42, 1), botLevel(1, 1), 'unknown difficulty falls back to the default');
 });
 
 test('bot vs bot matches always finish with a winner', () => {

@@ -1,15 +1,21 @@
-import { ATTACKS, BOT_LEVELS } from './config.js';
+import { ATTACKS, BOT_DIFFICULTIES, BOT_LEVELS, DEFAULT_DIFFICULTY } from './config.js';
 import { EMPTY_INPUT, isAttacking } from './fighter.js';
 
 // AI opponent. Produces the same input shape as a human player, so it plugs
 // into the authoritative simulation exactly like a remote/local controller.
-// Difficulty scales with the round number via BOT_LEVELS.
+// Skill climbs with the round number within the chosen difficulty's range.
 
 const PUNCH_RANGE = ATTACKS.punch.reach - 0.1;
 const KICK_RANGE = ATTACKS.kick.reach - 0.1;
 const THROW_RANGE = ATTACKS.throw.reach - 0.1;
 
-export function createBot(index) {
+/** BOT_LEVELS entry for a difficulty (BOT_DIFFICULTIES index) and round (1-based). */
+export function botLevel(difficulty, round) {
+  const d = BOT_DIFFICULTIES[difficulty] || BOT_DIFFICULTIES[DEFAULT_DIFFICULTY];
+  return BOT_LEVELS[Math.min(d.start + Math.max(0, round - 1), d.cap)];
+}
+
+export function createBot(index, difficulty = DEFAULT_DIFFICULTY) {
   let time = 0;
   let nextDecision = 0;
   let intent = 'hold';   // approach | retreat | hold | block | crouch
@@ -92,7 +98,7 @@ export function createBot(index) {
       return input;
     }
 
-    const lvl = BOT_LEVELS[Math.min(state.round - 1, BOT_LEVELS.length - 1)];
+    const lvl = botLevel(difficulty, state.round);
     const dist = Math.abs(opp.x - me.x);
     const toward = Math.sign(opp.x - me.x) || me.facing;
 
@@ -161,7 +167,7 @@ export function createBot(index) {
    */
   function finish(state, me, opp, input) {
     if (state.roundWinner !== index) return input;
-    const lvl = BOT_LEVELS[Math.min(state.round - 1, BOT_LEVELS.length - 1)];
+    const lvl = botLevel(difficulty, state.round);
     finishPlan ??= { fatality: rand() < 0.35 + lvl.aggression * 0.5, thrown: false };
     if (!finishPlan.fatality || finishPlan.thrown) return input;
 

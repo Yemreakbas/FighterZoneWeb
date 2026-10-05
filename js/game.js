@@ -1,4 +1,4 @@
-import { ARENA, HITSTOP, MATCH, ROUND_FLOW } from './config.js';
+import { ARENA, HITSTOP, MATCH, ROUND_FLOW, TRAINING } from './config.js';
 import {
   EMPTY_INPUT, applyContact, applyThrow, bufferPress, createFighter, findHit, findThrow, hurtbox, overlaps, projectileBox,
   projectileHit, separate, spawnProjectile, stepFighter,
@@ -10,12 +10,16 @@ import {
 //
 // Phases: intro -> fight -> [finish] -> roundEnd -> (intro | over)
 // `finish` is the FINISH HIM window after the match-deciding K.O.
+//
+// Training matches never end: no timer, no K.O., health refills after each
+// combo and `damage` events report the combo's running total.
 
 const START_X = 2.5;
 
 /** `chars` are indices into CHARACTERS for player 1 and 2; `arena` into ARENAS. */
-export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1], arena = 0) {
+export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1], arena = 0, { training = false } = {}) {
   const state = {
+    training,
     names,
     chars,
     arena,
@@ -59,7 +63,30 @@ export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1], ar
     state.phase = 'intro';
     state.phaseT = 0;
     state.roundWinner = -1;
-    emit({ type: 'announce', text: `ROUND ${state.round}`, ms: ROUND_FLOW.introAnnounce * 1000 });
+    emit({ type: 'announce', text: training ? 'ANTRENMAN' : `ROUND ${state.round}`, ms: ROUND_FLOW.introAnnounce * 1000 });
+    trainee = [0, 1].map(() => ({ lastHp: MATCH.maxHp, quiet: 0, dealt: 0 }));
+  }
+
+  // Training bookkeeping per fighter: damage since the last refill.
+  let trainee = [];
+
+  function trainingRefill(dt) {
+    state.fighters.forEach((f, i) => {
+      const t = trainee[i];
+      if (f.hp < t.lastHp) {
+        t.dealt += t.lastHp - f.hp;
+        t.quiet = 0;
+        emit({ type: 'damage', target: i, total: Math.round(t.dealt) });
+      } else {
+        t.quiet += dt;
+      }
+      const recovering = f.action === 'hit' || f.action === 'thrown';
+      if (f.hp <= 0 || (t.quiet >= TRAINING.refillDelay && !recovering)) {
+        f.hp = MATCH.maxHp;
+        if (t.quiet >= TRAINING.refillDelay) t.dealt = 0;
+      }
+      t.lastHp = f.hp;
+    });
   }
 
   function endRound(winner, text) {
@@ -149,6 +176,11 @@ export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1], ar
       for (const [atk, def, target] of [[a, b, 1], [b, a, 0]]) {
         const grab = findThrow(atk, def);
         if (grab) landed(target, applyThrow(grab), false);
+      }
+
+      if (training) {
+        trainingRefill(dt);
+        return;
       }
 
       state.timer = Math.max(0, state.timer - dt);

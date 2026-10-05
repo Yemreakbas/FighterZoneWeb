@@ -57,8 +57,8 @@ export function setHealth(index, hp, maxHp) {
   el.classList.toggle('low', pct <= 25);
 }
 
-export function setRound(n) { $('round-label').textContent = `ROUND ${n}`; }
-export function setTimer(seconds) { $('timer').textContent = String(Math.ceil(seconds)); }
+export function setRound(n) { $('round-label').textContent = n === 0 ? 'ANTRENMAN' : `ROUND ${n}`; }
+export function setTimer(seconds) { $('timer').textContent = seconds === null ? '--' : String(Math.ceil(seconds)); }
 
 let announceTimeout = 0;
 /** `style` 'blood' renders the MK-style red variant (FINISH HIM, FATALITY). */
@@ -107,6 +107,32 @@ export function renderCharacters(characters) {
       ${stat('GÜÇ', c.power, max('power'))}
       ${stat('TOP', c.projectileSpeed, max('projectileSpeed'))}
     </button>`).join('');
+}
+
+/** Show the difficulty picker (solo only) and highlight the chosen level. */
+export function setDifficulty(level, visible) {
+  $('difficulty').classList.toggle('hidden', !visible);
+  for (const btn of $('difficulty').querySelectorAll('.seg')) {
+    const on = Number(btn.dataset.level) === level;
+    btn.classList.toggle('on', on);
+    btn.setAttribute('aria-pressed', String(on));
+  }
+}
+
+/** Show the training dummy picker and highlight the chosen behaviour. */
+export function setDummy(mode, visible) {
+  $('dummy').classList.toggle('hidden', !visible);
+  for (const btn of $('dummy').querySelectorAll('.seg')) {
+    const on = btn.dataset.mode === mode;
+    btn.classList.toggle('on', on);
+    btn.setAttribute('aria-pressed', String(on));
+  }
+}
+
+/** Training HUD line under the dummy's health bar; `null` hides it. */
+export function setTrainingInfo(text) {
+  $('train-info').classList.toggle('hidden', text === null);
+  $('train-info').textContent = text ?? '';
 }
 
 /** Routes `data-action` button clicks to a handler map (handler gets the button). */

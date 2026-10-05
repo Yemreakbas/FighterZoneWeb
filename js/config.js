@@ -128,6 +128,10 @@ export const ARENAS = [
   },
 ];
 
+// Training mode: a fighter's health refills once it has taken no damage
+// for this long (and instantly if it would be knocked out).
+export const TRAINING = { refillDelay: 1.2 };
+
 // Impact freeze on clean hits (seconds). Blocked hits don't freeze.
 export const HITSTOP = { light: 0.05, heavy: 0.09 };
 
@@ -146,7 +150,7 @@ export const ROUND_FLOW = {
 };
 
 /**
- * Bot difficulty per round (index 0 = round 1; the last entry is reused).
+ * Bot skill levels, from weakest to strongest.
  * reaction:   seconds between decisions
  * block:      probability of blocking an incoming attack
  * aggression: probability of attacking when in range on a decision
@@ -157,7 +161,19 @@ export const BOT_LEVELS = [
   { reaction: 0.5,  block: 0.08, aggression: 0.35, combo: 0.0, speed: 0.6 },
   { reaction: 0.28, block: 0.4,  aggression: 0.6,  combo: 0.45, speed: 0.9 },
   { reaction: 0.16, block: 0.6,  aggression: 0.8,  combo: 0.7, speed: 1.0 },
+  { reaction: 0.11, block: 0.75, aggression: 0.85, combo: 0.85, speed: 1.0 },
 ];
+
+/**
+ * Difficulty chosen before a solo match. The bot starts at level `start` in
+ * round 1 and climbs one level per round, up to `cap` (BOT_LEVELS indices).
+ */
+export const BOT_DIFFICULTIES = [
+  { name: 'KOLAY',  start: 0, cap: 1 },
+  { name: 'NORMAL', start: 0, cap: 2 },
+  { name: 'ZOR',    start: 2, cap: 3 },
+];
+export const DEFAULT_DIFFICULTY = 1;
 
 export const NET = {
   idPrefix: 'fighterzone-v1-', // namespaces short room codes on the public PeerJS broker

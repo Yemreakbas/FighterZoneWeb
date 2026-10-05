@@ -1,5 +1,5 @@
 import { createStage } from './scene.js';
-import { ARENAS, CHARACTERS, MATCH, NET, TICK } from './config.js';
+import { ARENAS, BOT_DIFFICULTIES, CHARACTERS, DEFAULT_DIFFICULTY, MATCH, NET, TICK } from './config.js';
 import { createMatch } from './game.js';
 import { EMPTY_INPUT, createFighter } from './fighter.js';
 import { createBot } from './bot.js';
@@ -49,11 +49,11 @@ let helpReturn = 'menu';
  * play (and by the P2P host). Rendering interpolates between the last two
  * ticks so motion stays smooth on high refresh-rate displays.
  */
-function createLocalSession(chars, gatherInputs, onTick) {
+function createLocalSession(chars, gatherInputs, onTick, matchOptions = {}) {
   const names = chars.map((c) => CHARACTERS[c].name);
   // Every match (and rematch) is fought in a random arena.
   const randomArena = () => Math.floor(Math.random() * ARENAS.length);
-  let match = createMatch(names, chars, randomArena());
+  let match = createMatch(names, chars, randomArena(), matchOptions);
   let acc = 0;
   let prev = snapshotPositions(match.state);
   let events = [];
@@ -94,7 +94,7 @@ function createLocalSession(chars, gatherInputs, onTick) {
       return view();
     },
     rematch() {
-      match = createMatch(names, chars, randomArena());
+      match = createMatch(names, chars, randomArena(), matchOptions);
       acc = 0;
       prev = snapshotPositions(match.state);
     },
@@ -134,9 +134,29 @@ function createTicker(fn, ms) {
 
 // ---- Character select -----------------------------------------------------
 
-/** Mode chosen in the menu, waiting for a character pick: 'solo' | 'host' | 'join'. */
+/** Mode chosen in the menu, waiting for a character pick: 'solo' | 'training' | 'host' | 'join'. */
 let pendingMode = null;
 let myChar = 0;
+
+// Bot difficulty is remembered per browser; storage may be unavailable.
+const DIFFICULTY_KEY = 'fighterzone.difficulty';
+let difficulty = loadDifficulty();
+
+function loadDifficulty() {
+  try {
+    const d = Number(localStorage.getItem(DIFFICULTY_KEY) ?? NaN);
+    if (Number.isInteger(d) && d >= 0 && d < BOT_DIFFICULTIES.length) return d;
+  } catch { /* private mode / blocked storage */ }
+  return DEFAULT_DIFFICULTY;
+}
+
+function setDifficulty(btn) {
+  const d = Number(btn?.dataset.level);
+  if (!Number.isInteger(d) || d < 0 || d >= BOT_DIFFICULTIES.length) return;
+  difficulty = d;
+  ui.setDifficulty(difficulty, true);
+  try { localStorage.setItem(DIFFICULTY_KEY, String(d)); } catch { /* not persisted */ }
+}
 
 const validChar = (c) => (Number.isInteger(c) && c >= 0 && c < CHARACTERS.length ? c : 0);
 const otherChar = (c) => (c + 1 + Math.floor(Math.random() * (CHARACTERS.length - 1))) % CHARACTERS.length;
@@ -144,6 +164,8 @@ const otherChar = (c) => (c + 1 + Math.floor(Math.random() * (CHARACTERS.length 
 function openSelect(mode) {
   pendingMode = mode;
   ui.setMenuStatus('');
+  ui.setDifficulty(difficulty, mode === 'solo');
+  ui.setDummy(dummyMode, mode === 'training');
   ui.showScreen('select');
   document.querySelector(`.char-card[data-char="${myChar}"]`)?.focus();
 }
@@ -153,18 +175,51 @@ function pickCharacter(btn) {
   const mode = pendingMode;
   pendingMode = null;
   if (mode === 'solo') startSolo();
+  else if (mode === 'training') startTraining();
   else if (mode === 'host') openHostLobby();
   else if (mode === 'join') openJoinLobby();
 }
 
 function startSolo() {
-  const bot = createBot(1);
+  const bot = createBot(1, difficulty);
   session = createLocalSession(
     [myChar, otherChar(myChar)],
     (state) => [keyboard.sample(), bot.think(state, TICK)],
   );
   session.pausable = true;
   session.localIndex = 0;
+  enterFight();
+}
+
+// ---- Training: endless round against a scripted dummy ---------------------
+
+/** Training dummy behaviour: 'stand' | 'block' | 'crouch' | 'jump'. */
+let dummyMode = 'stand';
+
+function setDummy(btn) {
+  if (!['stand', 'block', 'crouch', 'jump'].includes(btn?.dataset.mode)) return;
+  dummyMode = btn.dataset.mode;
+  ui.setDummy(dummyMode, true);
+}
+
+function dummyInput(me) {
+  const input = { ...EMPTY_INPUT };
+  if (dummyMode === 'block') input.block = true;
+  else if (dummyMode === 'crouch') input.down = true;
+  else if (dummyMode === 'jump') input.jump = me.grounded && me.action !== 'hit';
+  return input;
+}
+
+function startTraining() {
+  session = createLocalSession(
+    [myChar, otherChar(myChar)],
+    (state) => [keyboard.sample(), dummyInput(state.fighters[1])],
+    undefined,
+    { training: true },
+  );
+  session.pausable = true;
+  session.localIndex = 0;
+  session.canRematch = false;
   enterFight();
 }
 
@@ -354,6 +409,7 @@ function connectToRoom() {
 
 function enterFight() {
   hud.reset();
+  ui.setTrainingInfo(null);
   ui.setMenuStatus('');
   ui.setNetStatus('');
   ui.showScreen(null);
@@ -394,6 +450,7 @@ function leaveToMenu(message = '') {
   session?.dispose?.();
   session = null;
   ui.setNetStatus('');
+  ui.setTrainingInfo(null);
   ui.announce('', 1);
   ui.setMenuStatus(message);
   ui.showScreen('menu');
@@ -415,8 +472,8 @@ const hud = {
     this.set('names', state.names.join('|'), () => ui.setNames(state.names[0], state.names[1]));
     this.set('hp0', a.hp, (v) => ui.setHealth(0, v, MATCH.maxHp));
     this.set('hp1', b.hp, (v) => ui.setHealth(1, v, MATCH.maxHp));
-    this.set('round', state.round, ui.setRound);
-    this.set('timer', Math.ceil(state.timer), ui.setTimer);
+    this.set('round', state.training ? 0 : state.round, ui.setRound);
+    this.set('timer', state.training ? null : Math.ceil(state.timer), ui.setTimer);
     this.set('wins0', state.wins[0], (v) => ui.setWins(0, v));
     this.set('wins1', state.wins[1], (v) => ui.setWins(1, v));
     this.set('phase', state.phase, (phase) => {
@@ -443,7 +500,7 @@ function handleEvents(events) {
     if (e.type === 'announce') {
       const text = String(e.text ?? '').slice(0, 32);
       ui.announce(text, Math.min(num(e.ms) || 1200, 5000), e.style === 'blood' ? 'blood' : '');
-      if (text.startsWith('ROUND')) {
+      if (text.startsWith('ROUND') || text === 'ANTRENMAN') {
         sound.play('round');
         effects.clearPieces();
       }
@@ -457,6 +514,8 @@ function handleEvents(events) {
       sound.play('heavy');
       effects.spark(num(e.x), 0.15, { heavy: true });
       stage.shake(0.35);
+    } else if (e.type === 'damage') {
+      if (e.target === 1) ui.setTrainingInfo(`HASAR ${Number(e.total) | 0}`);
     } else if (e.type === 'combo') {
       if (e.attacker === 0 || e.attacker === 1) ui.showCombo(e.attacker, Number(e.count) | 0);
     } else if (e.type === 'fireball') {
@@ -486,6 +545,9 @@ ui.bindActions({
   host: () => openSelect('host'),
   join: () => openSelect('join'),
   pick: pickCharacter,
+  difficulty: setDifficulty,
+  dummy: setDummy,
+  training: () => openSelect('training'),
   connect: connectToRoom,
   pause,
   resume,
