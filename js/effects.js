@@ -65,6 +65,7 @@ export function createEffects(scene) {
 
   /** Floor impact at `x`; `strength` scales spread and puff size. */
   function dustBurst(x, strength = 1) {
+    dust.forEach((d, i) => {
       const side = i % 2 === 0 ? 1 : -1;
       d.age = 0;
       d.size = (0.14 + Math.random() * 0.14) * strength;
