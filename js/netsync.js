@@ -120,7 +120,7 @@ export function encodeSnapshot(state, tick, events, ack = 0, meIndex = 1) {
         x: r3(f.x), y: r3(f.y), d: f.facing, hp: r3(f.hp),
         a: f.action, t: r3(f.t), c: f.crouch ? 1 : 0, g: f.grounded ? 1 : 0, cd: r3(f.cooldown), gd: r3(f.guard),
       })),
-      pr: state.projectiles.map((p) => ({ o: p.owner, x: r3(p.x), y: r3(p.y), d: Math.sign(p.vx) })),
+      pr: state.projectiles.map((p) => ({ o: p.owner, x: r3(p.x), y: r3(p.y), r: r3(p.r ?? 0.22), d: Math.sign(p.vx) })),
       pk: state.pickup ? [PICKUPS.kinds.indexOf(state.pickup.kind), r3(state.pickup.x), r3(state.pickup.y)] : 0,
     },
     e: events.map((e) => (e.type === 'hit' ? { ...e, x: r3(e.x), y: r3(e.y) } : e)),
@@ -184,6 +184,7 @@ function decodeState(s) {
     })),
     projectiles: (Array.isArray(s.pr) ? s.pr.slice(0, n) : []).map((p) => ({
       owner: Number.isInteger(p?.o) && p.o >= 0 && p.o < n ? p.o : 0, x: num(p?.x), y: num(p?.y), vx: p?.d < 0 ? -1 : 1,
+      r: Math.min(0.6, Math.max(0.05, num(p?.r, 0.22))),
     })),
   };
 }

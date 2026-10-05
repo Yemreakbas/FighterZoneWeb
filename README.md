@@ -73,6 +73,19 @@ Alttan **zıplayarak** (W) içinden geçip üstüne çıkılır, **aşağı + z�
 
 Arka planda sütunlar ve titreyen meşaleler, sınırlarda sandıklar ve fıçılar, yerde arena amblemi var. Hepsi ekstra ışık kullanmadan çizilir.
 
+## Karakterlere özel hareketler
+
+Her karakterin özel hareketi kendine ait bir atıştır ve farklı bir savunma ister:
+
+| Karakter | Özel hareket | Nasıl kaçılır |
+|---|---|---|
+| KOR | **Yer Dalgası**: yerden giden yavaş, güçlü dalga (×1,2 hasar) | Eğilmek işe yaramaz, üstünden zıpla ya da blokla |
+| AYAZ | **Buz Topu**: dengeli enerji topu | Eğil, zıpla ya da blokla |
+| KUZGUN | **Gölge Oku**: kafa hizasında, çok hızlı, küçük ok (×0,95 hasar) | Eğil |
+| YILDIRIM | **Yıldırım Küresi**: iri, yavaş küre (×1,1 hasar) | Eğilmek yetmez; zıpla ya da blokla |
+
+Farklı yükseklikteki atışlar birbirinin yanından geçer, sadece çarpışanlar birbirini yok eder. Bot gelen atışa göre eğilir, zıplar ya da bloklar. Değerler, botlar arasında her eşleşmeden 8 maçlık bir turnuvada karakterler %42-54 kazanacak şekilde ayarlandı.
+
 ## Güçlendirme kristalleri
 
 Maç sırasında (antrenmanda değil) rastgele bir platformun üstünde dönen bir kristal belirir: ilki 12. saniyede, sonra her 18 saniyede bir. Hareketli platformdaki kristal platformla birlikte gider.

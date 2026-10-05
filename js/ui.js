@@ -142,6 +142,7 @@ export function renderCharacters(characters) {
       ${stat('HIZ', c.speed, max('speed'))}
       ${stat('GÜÇ', c.power, max('power'))}
       ${stat('TOP', c.projectileSpeed, max('projectileSpeed'))}
+      ${c.special ? `<span class="special-name">${escapeHtml(c.special.name)}</span>` : ''}
     </button>`).join('');
 }
 

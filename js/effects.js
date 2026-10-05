@@ -126,7 +126,12 @@ export function createEffects(scene) {
       const o = orbs[p.owner];
       if (!o) continue;
       o.group.position.set(p.x, p.y, 0);
-      o.glow.scale.setScalar(0.26 + Math.sin(orbTime * 30) * 0.04);
+      // Size follows the projectile; a low wave hugging the floor is flattened.
+      const r = p.r ?? 0.22;
+      const flat = p.y < 0.6 ? 0.55 : 1;
+      const pulse = 1.18 + Math.sin(orbTime * 30) * 0.18;
+      o.glow.scale.set(r * pulse * (flat < 1 ? 1.6 : 1), r * pulse * flat, r * pulse);
+      o.core.scale.set(r * 0.55, r * 0.55 * flat, r * 0.55);
     }
   }
 

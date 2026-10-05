@@ -1,4 +1,4 @@
-import { ATTACKS, BOT_DIFFICULTIES, BOT_LEVELS, DEFAULT_DIFFICULTY, PICKUPS } from './config.js';
+import { ATTACKS, BODY, BOT_DIFFICULTIES, BOT_LEVELS, DEFAULT_DIFFICULTY, PICKUPS } from './config.js';
 import { EMPTY_INPUT, isAttacking, isSweep, platformsAt } from './fighter.js';
 import { defaultTeams, targetOf } from './game.js';
 
@@ -142,7 +142,8 @@ export function createBot(index, difficulty = DEFAULT_DIFFICULTY) {
       queued = [];
     }
 
-    // Incoming projectile: duck under it or block, with the level's block odds.
+    // Incoming projectile: duck under it, hop over it or block, with the
+    // level's odds. Which dodge works depends on the projectile's height.
     const incoming = state.projectiles.find((p) => teams[p.owner] !== teams[index]
       && Math.sign(me.x - p.x) === Math.sign(p.vx) && Math.abs(me.x - p.x) < 3.5
       && Math.abs(p.y - me.y - 1.2) < 1.2);
@@ -151,9 +152,20 @@ export function createBot(index, difficulty = DEFAULT_DIFFICULTY) {
     } else if (!reactedToProjectile && me.grounded) {
       reactedToProjectile = true;
       if (rand() < lvl.block + 0.1) {
-        intent = rand() < 0.5 ? 'crouch' : 'block';
-        intentUntil = time + Math.abs(me.x - incoming.x) / Math.abs(incoming.vx || 9) + 0.25;
+        const rel = incoming.y - me.y;
+        const r = incoming.r ?? 0.22;
+        const eta = Math.abs(me.x - incoming.x) / Math.abs(incoming.vx || 9);
+        const duckable = rel - r > BODY.crouchHeight;
+        const hoppable = rel + r < 1.3;
         queued = [];
+        if (hoppable && rand() < 0.7) {
+          // Leave the ground just before it arrives.
+          intent = 'hold';
+          press('jump', Math.max(0, eta - 0.25));
+        } else {
+          intent = duckable && rand() < 0.5 ? 'crouch' : 'block';
+          intentUntil = time + eta + 0.25;
+        }
       }
     }
 

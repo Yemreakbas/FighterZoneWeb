@@ -123,13 +123,24 @@ export const PROJECTILE = {
 /**
  * Selectable fighters. Stats are multipliers on the shared base values so
  * every move keeps the same frame data and only the feel changes.
- * Names avoid Turkish-only letters: the pixel font has no glyphs for them.
+ * Names avoid Turkish-only letters: the pixel font has no glyphs for them
+ * (`special.name` is shown in the body font and may use them).
+ *
+ * Each fighter's special is its own projectile: `height` of its centre
+ * above the caster's feet, `radius` and a `damage` multiplier. A crouching
+ * hurtbox is BODY.crouchHeight (1.15) tall, so a projectile whose bottom
+ * (height - radius) is above that can be ducked; anything lower must be
+ * jumped or blocked.
  */
 export const CHARACTERS = [
-  { id: 'kor',    name: 'KOR',    color: 0xc62828, desc: 'Güçlü ama yavaş',     speed: 0.9,  power: 1.15, projectileSpeed: 8 },
-  { id: 'ayaz',   name: 'AYAZ',   color: 0x1e5bd6, desc: 'Dengeli, hızlı top',   speed: 1.0,  power: 1.0,  projectileSpeed: 11.5 },
-  { id: 'kuzgun', name: 'KUZGUN', color: 0x7b2fbf, desc: 'Çevik ama kırılgan',   speed: 1.2,  power: 0.85, projectileSpeed: 9 },
-  { id: 'yildirim', name: 'YILDIRIM', color: 0xd4a017, desc: 'En hızlı, ağır top',  speed: 1.25, power: 0.95, projectileSpeed: 6.5 },
+  { id: 'kor',    name: 'KOR',    color: 0xc62828, desc: 'Güçlü ama yavaş',     speed: 0.9,  power: 1.15, projectileSpeed: 7,
+    special: { name: 'Yer Dalgası: eğilerek kaçılmaz, üstünden zıpla', height: 0.3, radius: 0.3, damage: 1.2 } },
+  { id: 'ayaz',   name: 'AYAZ',   color: 0x1e5bd6, desc: 'Dengeli, hızlı top',   speed: 1.0,  power: 1.0,  projectileSpeed: 11.5,
+    special: { name: 'Buz Topu: dengeli enerji topu', height: 1.4, radius: 0.22, damage: 1 } },
+  { id: 'kuzgun', name: 'KUZGUN', color: 0x7b2fbf, desc: 'Çevik ama kırılgan',   speed: 1.2,  power: 0.85, projectileSpeed: 13,
+    special: { name: 'Gölge Oku: çok hızlı, kafa hizasında', height: 1.6, radius: 0.15, damage: 0.95 } },
+  { id: 'yildirim', name: 'YILDIRIM', color: 0xd4a017, desc: 'En hızlı, ağır top',  speed: 1.25, power: 0.95, projectileSpeed: 6.5,
+    special: { name: 'Yıldırım Küresi: iri, eğilmek yetmez', height: 1.2, radius: 0.36, damage: 1.1 } },
 ];
 
 /**

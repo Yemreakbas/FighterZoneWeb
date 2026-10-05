@@ -466,18 +466,21 @@ export function applyThrow({ attacker, defender }) {
 export function spawnProjectile(f, owner) {
   if (f.action !== 'special' || f.attackHit || f.t < ATTACKS.special.startup) return null;
   f.attackHit = true;
+  const s = stats(f);
+  const sp = s.special || { height: PROJECTILE.height, radius: PROJECTILE.radius, damage: 1 };
   return {
     owner,
     x: f.x + f.facing * PROJECTILE.spawnOffset,
-    y: f.y + PROJECTILE.height,
-    vx: f.facing * stats(f).projectileSpeed,
+    y: f.y + sp.height,
+    r: sp.radius,
+    vx: f.facing * s.projectileSpeed,
     life: PROJECTILE.lifetime,
-    power: stats(f).power,
+    power: s.power * sp.damage,
   };
 }
 
 export function projectileBox(p) {
-  const r = PROJECTILE.radius;
+  const r = p.r ?? PROJECTILE.radius;
   return { x0: p.x - r, x1: p.x + r, y0: p.y - r, y1: p.y + r };
 }
 

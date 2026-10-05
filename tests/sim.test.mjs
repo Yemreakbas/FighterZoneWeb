@@ -867,3 +867,47 @@ test('no power-ups in training; the crystal survives the network round trip', ()
   assert.equal(got.kind, m.state.pickup.kind);
   assert.ok(Math.abs(got.x - m.state.pickup.x) < 1e-3);
 });
+
+// ---------------------------------------------------------------------------
+// Character specials
+// ---------------------------------------------------------------------------
+
+/** Caster `char` fires at a defender 4 units away doing `defence`. */
+function specialVs(char, defence) {
+  const m = fightAt(0, 4, [char, 1]);
+  return hits(run(m, 90, (t) => [t === 0 ? { special: true } : {}, defence(t, m)]));
+}
+
+const charIndex = (id) => CHARACTERS.findIndex((c) => c.id === id);
+
+test('every character has its own special projectile', () => {
+  const shapes = new Set(CHARACTERS.map((c) => `${c.special.height}/${c.special.radius}`));
+  assert.equal(shapes.size, CHARACTERS.length);
+});
+
+test('KOR\'s ground wave cannot be ducked but can be jumped', () => {
+  assert.equal(specialVs(charIndex('kor'), () => ({ down: true })).length, 1, 'hits a crouching fighter');
+  // Jump as the wave closes in (it travels 7 u/s from 0.6 away).
+  const jumped = specialVs(charIndex('kor'), (t) => (t === 22 ? { jump: true } : {}));
+  assert.equal(jumped.length, 0, 'clears it with a jump');
+});
+
+test('KUZGUN\'s arrow is ducked; YILDIRIM\'s orb is too big to duck', () => {
+  assert.equal(specialVs(charIndex('kuzgun'), () => ({ down: true })).length, 0);
+  assert.equal(specialVs(charIndex('yildirim'), () => ({ down: true })).length, 1);
+});
+
+test('special damage follows the character\'s multiplier', () => {
+  const m = fightAt(0, 4, [charIndex('yildirim'), 1]);
+  run(m, 90, (t) => [t === 0 ? { special: true } : {}, {}]);
+  const c = CHARACTERS[charIndex('yildirim')];
+  assert.ok(Math.abs(m.state.fighters[1].hp - (MATCH.maxHp - ATTACKS.special.damage * c.power * c.special.damage)) < 1e-9);
+});
+
+test('projectile size survives the network round trip', () => {
+  const m = fightAt(0, 6, [charIndex('yildirim'), 1]);
+  run(m, 25, (t) => [t === 0 ? { special: true } : {}, {}]);
+  const interp = createInterpolator();
+  interp.push(JSON.parse(JSON.stringify(encodeSnapshot(m.state, 1, []))));
+  assert.equal(interp.sample().state.projectiles[0].r, CHARACTERS[charIndex('yildirim')].special.radius);
+});

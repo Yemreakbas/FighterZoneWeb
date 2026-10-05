@@ -136,6 +136,7 @@ h2 {
 .char-card:hover, .char-card:focus-visible { border-color: var(--char-color); transform: translateY(-2px); outline: none; }
 .char-card .name { font: 16px 'Press Start 2P', monospace; color: var(--char-color); filter: brightness(1.4); }
 .char-card .desc { color: var(--muted); }
+.char-card .special-name { font-size: 12px; line-height: 1.25; color: var(--char-color); filter: brightness(1.5); }
 .stat { display: grid; grid-template-columns: 38px 1fr; align-items: center; gap: 8px; font-size: 13px; }
 .stat .bar { height: 6px; background: rgba(255, 255, 255, 0.1); border-radius: 3px; overflow: hidden; }
 .stat .bar i { display: block; height: 100%; background: var(--char-color); filter: brightness(1.3); }
