@@ -3,6 +3,7 @@ import { ARENAS, ATTACKS, BOT_DIFFICULTIES, CHARACTERS, DEFAULT_DIFFICULTY, MATC
 import { TEAM_NAMES, createMatch, defaultTeams } from './game.js';
 import { EMPTY_INPUT, createFighter } from './fighter.js';
 import { createBot } from './bot.js';
+import { createArcade } from './arcade.js';
 import { createKeyboard } from './input.js';
 import { createFighterView } from './fighterView.js';
 import { createEffects } from './effects.js';
@@ -180,6 +181,7 @@ function pickCharacter(btn) {
   pendingMode = null;
   if (mode === 'solo') startSolo();
   else if (mode === 'team') startTeamSolo();
+  else if (mode === 'arcade') startArcade();
   else if (mode === 'training') startTraining();
   else if (mode === 'host') openHostLobby();
   else if (mode === 'join') openJoinLobby();
@@ -209,6 +211,57 @@ function startTeamSolo() {
   session.pausable = true;
   session.localIndex = 0;
   enterFight();
+}
+
+// ---- Arcade: beat the other fighters in a row, each one harder -----------
+//
+// Stage n is fought at difficulty n (KOLAY, NORMAL, ZOR). A loss retries the
+// same stage; clearing them all makes you champion. The best run is kept.
+
+const ARCADE_BEST_KEY = 'fighterzone.arcadeBest';
+/** The running arcade (see arcade.js), or null. */
+let arcade = null;
+
+const arcadeLength = () => CHARACTERS.length - 1;
+
+function loadArcadeBest() {
+  try { return Math.max(0, Number(localStorage.getItem(ARCADE_BEST_KEY)) | 0); } catch { return 0; }
+}
+
+function startArcade() {
+  arcade = createArcade(myChar, CHARACTERS, BOT_DIFFICULTIES, shuffle);
+  startArcadeStage();
+}
+
+function startArcadeStage() {
+  const { opponent, level } = arcade.current();
+  const bot = createBot(1, level);
+  session = createLocalSession(
+    [myChar, opponent],
+    (state) => [keyboard.sample(), bot.think(state, TICK)],
+  );
+  session.pausable = true;
+  session.localIndex = 0;
+  session.rematch = arcadeContinue;
+  session.result = arcadeResult;
+  enterFight();
+  ui.showHint(`Aşama ${arcade.stage + 1}/${arcade.ladder.length} · Rakip: ${CHARACTERS[opponent].name} · ${BOT_DIFFICULTIES[level].name}`, 3000);
+}
+
+function arcadeResult(state) {
+  const r = arcade.finish(state.winner === 0);
+  if (r.cleared > loadArcadeBest()) {
+    try { localStorage.setItem(ARCADE_BEST_KEY, String(r.cleared)); } catch { /* not persisted */ }
+    ui.setArcadeBest(r.cleared, arcadeLength());
+  }
+  return r;
+}
+
+/** The result screen's button: next stage, retry, or a fresh run after winning it all. */
+function arcadeContinue() {
+  if (arcade.done) return startArcade();
+  arcade.advance();
+  startArcadeStage();
 }
 
 // ---- Training: endless round against a scripted dummy ---------------------
@@ -627,6 +680,7 @@ function resume() {
 
 function leaveToMenu(message = '') {
   sound.stopMusic();
+  arcade = null;
   effects.clearPieces();
   paused = false;
   pendingMode = null;
@@ -677,7 +731,11 @@ const hud = {
     this.set('wins0', state.wins[0], (v) => ui.setWins(0, v));
     this.set('wins1', state.wins[1], (v) => ui.setWins(1, v));
     this.set('phase', state.phase, (phase) => {
-      if (phase === 'over') {
+      if (phase === 'over' && session?.result) {
+        paused = false;
+        const r = session.result(state);
+        ui.showResult(r.title, r.detail, true, r.button);
+      } else if (phase === 'over') {
         paused = false;
         const name = n === 2 ? state.names[state.winner] : TEAM_NAMES[state.winner];
         const score = `${state.wins[0]} - ${state.wins[1]}`;
@@ -758,6 +816,7 @@ function handleEvents(events) {
 // ---------------------------------------------------------------------------
 ui.bindActions({
   solo: () => openSelect('solo'),
+  arcade: () => openSelect('arcade'),
   team: () => openSelect('team'),
   host: () => openSelect('host'),
   join: () => openSelect('join'),
@@ -880,6 +939,7 @@ function applyCharacterColors(chars, teams, local) {
 }
 
 ui.renderCharacters(CHARACTERS);
+ui.setArcadeBest(loadArcadeBest(), arcadeLength());
 
 // ---- Graphics quality (OTO / DÜŞÜK / ORTA / YÜKSEK), remembered per browser ----
 const GRAPHICS_KEY = 'fighterzone.graphics';

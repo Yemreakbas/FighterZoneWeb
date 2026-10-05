@@ -936,3 +936,31 @@ test('projectile size survives the network round trip', () => {
   interp.push(JSON.parse(JSON.stringify(encodeSnapshot(m.state, 1, []))));
   assert.equal(interp.sample().state.projectiles[0].r, CHARACTERS[charIndex('yildirim')].special.radius);
 });
+
+// ---------------------------------------------------------------------------
+// Arcade (TURNUVA)
+// ---------------------------------------------------------------------------
+
+test('arcade: three opponents, harder each stage; a loss retries the stage', async () => {
+  const { createArcade } = await import('../js/arcade.js');
+  const a = createArcade(1, CHARACTERS, BOT_DIFFICULTIES);
+  assert.deepEqual(a.ladder, [0, 2, 3], 'everyone but the player');
+  assert.deepEqual(a.current(), { opponent: 0, level: 0 });
+
+  const lost = a.finish(false);
+  assert.equal(lost.button, 'TEKRAR DENE');
+  a.advance();
+  assert.equal(a.stage, 0, 'retry the same stage');
+
+  assert.equal(a.finish(true).button, 'SONRAKİ RAKİP');
+  a.advance();
+  assert.deepEqual(a.current(), { opponent: 2, level: 1 });
+  a.finish(true);
+  a.advance();
+  assert.deepEqual(a.current(), { opponent: 3, level: 2 });
+
+  const won = a.finish(true);
+  assert.equal(won.title, 'SAMPIYON!');
+  assert.equal(won.cleared, 3);
+  assert.ok(a.done);
+});

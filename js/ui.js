@@ -18,9 +18,10 @@ export function showScreen(name) {
   document.body.classList.toggle('in-fight', name === null);
 }
 
-export function showResult(title, detail, canRematch) {
+export function showResult(title, detail, canRematch, rematchLabel = 'TEKRAR OYNA') {
   $('result-title').textContent = title;
   $('result-detail').textContent = detail;
+  $('rematch-btn').textContent = rematchLabel;
   $('rematch-btn').classList.toggle('hidden', !canRematch);
   showScreen('result');
 }
@@ -200,6 +201,13 @@ export function renderLobby(lobby, you, isHost, characters) {
     btn.setAttribute('aria-pressed', String(on));
     btn.disabled = !isHost;
   }
+}
+
+/** Arcade menu button: shows the best run so far (stages cleared of `total`). */
+export function setArcadeBest(best, total) {
+  const btn = document.querySelector('[data-action="arcade"]');
+  if (!btn) return;
+  btn.textContent = best >= total ? 'TURNUVA · ŞAMPİYON ★' : best > 0 ? `TURNUVA · EN İYİ ${best}/${total}` : 'TURNUVA';
 }
 
 const GRAPHICS_NAMES = { auto: 'OTO', 0: 'DÜŞÜK', 1: 'ORTA', 2: 'YÜKSEK' };
