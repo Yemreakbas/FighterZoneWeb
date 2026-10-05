@@ -28,7 +28,6 @@ export function createFighter(x, facing, char = 0) {
     attackHit: false,  // current attack already connected / projectile already fired
     airAttack: false,  // one aerial attack per jump
     cooldown: 0,       // seconds until the special move is ready again
-    drop: 0,           // seconds left falling through platforms (down + jump)
     chain: 0,          // hits taken in a row without recovering (combo breaker)
     guard: 0,          // seconds left untouchable after a combo breaker
     buffer: null,      // { type, age } attack pressed while busy
@@ -93,7 +92,6 @@ export function bufferPress(f, input) {
 export function stepFighter(f, input, opp, dt) {
   f.t += dt;
   f.cooldown = Math.max(0, f.cooldown - dt);
-  f.drop = Math.max(0, f.drop - dt);
   f.guard = Math.max(0, f.guard - dt);
   if (f.action !== 'hit') f.chain = 0;
 
@@ -131,17 +129,6 @@ function control(f, input, opp) {
 
   // Grounded fighters always turn to face the opponent.
   if (opp.x !== f.x) f.facing = Math.sign(opp.x - f.x);
-
-  // Down + jump on a platform drops through it.
-  if (input.jump && input.down && !input.block && f.y > ARENA.groundY) {
-    f.drop = ARENA.dropThrough;
-    f.grounded = false;
-    f.crouch = false;
-    f.vy = 0;
-    setAction(f, 'jump');
-    f.airAttack = false;
-    return;
-  }
 
   if (input.jump && !input.down && !input.block) {
     const dir = (input.right ? 1 : 0) - (input.left ? 1 : 0);
@@ -204,10 +191,12 @@ function integrate(f, dt) {
     if (!BUSY.has(f.action)) setAction(f, 'jump');
   }
 
+  const prevX = f.x;
   const prevY = f.y;
   if (!f.grounded) f.vy += PHYSICS.gravity * dt;
   f.x += f.vx * dt;
   f.y += f.vy * dt;
+  collideSlabs(f, prevX, prevY);
 
   const floor = landingHeight(f, prevY);
   if (f.y <= floor) {
@@ -254,7 +243,11 @@ export function setPlatforms(before, now) {
   platformsNow = now;
 }
 
-const onSurface = (p, x, y) => x >= p.x0 && x <= p.x1 && Math.abs(p.y - y) < 1e-6;
+// Feet may hang this far past an edge: a landing that just misses with the
+// body's centre still counts, and standing right at the edge is stable.
+const EDGE = 0.2;
+
+const onSurface = (p, x, y) => x >= p.x0 - EDGE && x <= p.x1 + EDGE && Math.abs(p.y - y) < 1e-6;
 
 /** The platform whose surface is at height `y` under `x`, if any. */
 function platformAt(x, y) {
@@ -262,15 +255,36 @@ function platformAt(x, y) {
 }
 
 /**
+ * Platforms are solid: coming from below the head bumps the underside;
+ * coming from the side the body is stopped at the edge (horizontal speed is
+ * kept, so a jump next to a platform rides up its edge and over the top once
+ * the feet clear it). Landing from above is handled by landingHeight.
+ */
+function collideSlabs(f, prevX, prevY) {
+  const half = BODY.width / 2;
+  for (const p of platformsNow) {
+    const bottom = p.y - ARENA.slab;
+    const overlapX = f.x + half > p.x0 && f.x - half < p.x1;
+    const overlapY = f.y < p.y - 1e-6 && f.y + BODY.drawnHeight > bottom;
+    if (!overlapX || !overlapY) continue;
+    if (prevY + BODY.drawnHeight <= bottom + 1e-6) {
+      f.y = bottom - BODY.drawnHeight;
+      if (f.vy > 0) f.vy = 0;
+    } else if (prevY < p.y - 1e-6) {
+      f.x = prevX <= (p.x0 + p.x1) / 2 ? p.x0 - half : p.x1 + half;
+    }
+  }
+}
+
+/**
  * Highest surface the fighter can land on this tick: a platform it was above
- * (or on) last tick and is now at or below, while falling and not dropping
- * through; otherwise the floor.
+ * (or on) last tick and is now at or below, while falling; otherwise the floor.
  */
 function landingHeight(f, prevY) {
   let floor = ARENA.groundY;
-  if (f.vy > 0 || f.drop > 0) return floor;
+  if (f.vy > 0) return floor;
   for (const p of platformsNow) {
-    if (p.y > floor && f.x >= p.x0 && f.x <= p.x1 && prevY >= p.y - 1e-6) floor = p.y;
+    if (p.y > floor && f.x >= p.x0 - EDGE && f.x <= p.x1 + EDGE && prevY >= p.y - 1e-6) floor = p.y;
   }
   return floor;
 }

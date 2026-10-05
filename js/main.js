@@ -791,6 +791,7 @@ ui.bindActions({
   back: () => leaveToMenu(),
   fullscreen: toggleFullscreen,
   music: toggleMusic,
+  graphics: cycleGraphics,
 });
 
 function toggleMusic() {
@@ -879,6 +880,43 @@ function applyCharacterColors(chars, teams, local) {
 }
 
 ui.renderCharacters(CHARACTERS);
+
+// ---- Graphics quality (OTO / DÜŞÜK / ORTA / YÜKSEK), remembered per browser ----
+const GRAPHICS_KEY = 'fighterzone.graphics';
+const GRAPHICS = ['auto', 0, 1, 2];
+let graphics = (() => {
+  try {
+    const v = localStorage.getItem(GRAPHICS_KEY);
+    return v === null || v === 'auto' ? 'auto' : GRAPHICS.includes(Number(v)) ? Number(v) : 'auto';
+  } catch { return 'auto'; }
+})();
+stage.setQualityMode(graphics);
+ui.setGraphicsLabel(graphics);
+
+function cycleGraphics() {
+  graphics = GRAPHICS[(GRAPHICS.indexOf(graphics) + 1) % GRAPHICS.length];
+  stage.setQualityMode(graphics);
+  ui.setGraphicsLabel(graphics);
+  try { localStorage.setItem(GRAPHICS_KEY, String(graphics)); } catch { /* not persisted */ }
+}
+
+/**
+ * Compile every material up front: effects (projectiles, sparks, crystal,
+ * fatality pieces, team markers) start hidden, and the first time one showed
+ * up mid-fight its shader compile caused a visible hitch.
+ */
+function prewarmShaders() {
+  const hidden = [];
+  stage.scene.traverse((o) => {
+    if (!o.visible) {
+      hidden.push(o);
+      o.visible = true;
+    }
+  });
+  try { stage.renderer.compile(stage.scene, stage.camera); } catch { /* compile is only an optimisation */ }
+  for (const o of hidden) o.visible = false;
+}
+prewarmShaders();
 
 // ---------------------------------------------------------------------------
 // Main loop: requestAnimationFrame with clamped delta time so a background

@@ -3,16 +3,17 @@ import { ARENA, ARENAS, CAMERA } from './config.js';
 import { platformsAt } from './fighter.js';
 
 /**
- * Render quality tiers: pixel-ratio cap and key-light shadow map size
- * (0 = no shadows). Phones start at medium; any device drops a tier when
- * frames run slow (see `reportFrame`).
+ * Render quality tiers (DÜŞÜK / ORTA / YÜKSEK): pixel-ratio cap and
+ * key-light shadow map size (0 = no shadows). In 'auto' mode phones start at
+ * medium, other devices at high, and any device drops a tier when frames run
+ * slow (see `reportFrame`). A fixed tier chosen in the menu is kept as is.
  */
 const QUALITY = [
-  { dpr: 1, shadow: 0 },
-  { dpr: 1.5, shadow: 1024 },
-  { dpr: 2, shadow: 2048 },
+  { dpr: 0.85, shadow: 0 },
+  { dpr: 1.25, shadow: 1024 },
+  { dpr: 1.75, shadow: 2048 },
 ];
-const SLOW_FRAME = 1 / 40;  // average frame time that triggers a downgrade
+const SLOW_FRAME = 1 / 50;  // average frame time that triggers a downgrade
 const SAMPLE_TIME = 2;      // seconds per measurement window
 const WARMUP = 3;           // ignore the first seconds (shader compiles)
 
@@ -27,7 +28,7 @@ export function createStage(container) {
   const renderer = new THREE.WebGLRenderer({ antialias: !touch, powerPreference: 'high-performance' });
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = touch ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap; // PCFSoft costs several times more per pixel
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.25;
@@ -46,7 +47,9 @@ export function createStage(container) {
   const lights = addLights(scene);
   const arena = addArena(scene);
 
-  let quality = touch ? 1 : 2;
+  const autoTier = touch ? 1 : 2;
+  let mode = 'auto';      // 'auto' or a fixed tier index
+  let quality = autoTier;
   function applyQuality() {
     const q = QUALITY[quality];
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, q.dpr));
@@ -67,7 +70,7 @@ export function createStage(container) {
   let windowFrames = 0;
   function reportFrame(dt) {
     monitorAge += dt;
-    if (monitorAge < WARMUP || quality === 0) return;
+    if (mode !== 'auto' || monitorAge < WARMUP || quality === 0) return;
     windowTime += dt;
     windowFrames++;
     if (windowTime < SAMPLE_TIME) return;
@@ -101,7 +104,6 @@ export function createStage(container) {
     lights.key.color.setHex(a.key);
     lights.key.intensity = a.keyIntensity;
     lights.rims.forEach((l, j) => l.color.setHex(a.rims[j]));
-    arena.torches.forEach((l) => l.color.setHex(a.torch));
     arena.floor.map = textures[idx].floor;
     arena.wall.map = textures[idx].wall;
     arena.floor.needsUpdate = arena.wall.needsUpdate = true;
@@ -196,6 +198,13 @@ export function createStage(container) {
     animate,
     reportFrame,
     get quality() { return quality; },
+    /** 'auto' (adaptive) or a fixed tier 0..2. */
+    setQualityMode(m) {
+      mode = m === 0 || m === 1 || m === 2 ? m : 'auto';
+      quality = mode === 'auto' ? autoTier : mode;
+      monitorAge = windowTime = windowFrames = 0;
+      applyQuality();
+    },
     setArena,
     shake: (amount) => { shakeAmt = Math.max(shakeAmt, amount); },
     /** Brief push-in toward the fighters for big impacts. */
@@ -217,10 +226,11 @@ function addLights(scene) {
   key.position.set(5, 12, 8);
   key.castShadow = true;
   key.shadow.mapSize.set(2048, 2048);
-  key.shadow.camera.left = -14;
-  key.shadow.camera.right = 14;
-  key.shadow.camera.top = 10;
-  key.shadow.camera.bottom = -4;
+  // Tight around the arena so the shadow map's texels aren't wasted.
+  key.shadow.camera.left = -11;
+  key.shadow.camera.right = 11;
+  key.shadow.camera.top = 9;
+  key.shadow.camera.bottom = -2;
   scene.add(key);
 
   // Coloured rim lights give the arena its arcade mood.
@@ -254,7 +264,6 @@ function addArena(scene) {
 
   // Stone pillars marking the arena boundaries.
   const pillarMat = new THREE.MeshStandardMaterial({ color: 0x3a3440, roughness: 0.9 });
-  const torches = [];
   for (const side of [-1, 1]) {
     const pillar = new THREE.Mesh(new THREE.BoxGeometry(1, 6, 1), pillarMat);
     pillar.position.set(side * (ARENA.halfWidth + 1.5), 3, -1.5);
@@ -262,10 +271,6 @@ function addArena(scene) {
     pillar.receiveShadow = true;
     scene.add(pillar);
 
-    const torch = new THREE.PointLight(0xff8a2a, 8, 8);
-    torch.position.set(side * (ARENA.halfWidth + 1.5), 6.4, -0.8);
-    scene.add(torch);
-    torches.push(torch);
   }
 
   // Back wall.
@@ -290,7 +295,7 @@ function addArena(scene) {
   // ones (see updatePlatforms) carry their chains along. Side slabs stand on
   // posts behind the fighting plane, the top one hangs on chains.
   const lipMat = new THREE.MeshStandardMaterial({ color: 0xffb060, emissive: 0xff8a2a, emissiveIntensity: 0.6, roughness: 0.5 });
-  const SLAB = 0.28;
+  const SLAB = ARENA.slab;
   const DEPTH = 1.8;
   const platforms = ARENA.platforms.map((p) => {
     const w = p.x1 - p.x0;
@@ -327,7 +332,7 @@ function addArena(scene) {
   const details = addDetails(scene, pillarMat);
 
   return {
-    floor: floor.material, wall: wall.material, pillar: pillarMat, torches, banners, lip: lipMat, platforms, ...details,
+    floor: floor.material, wall: wall.material, pillar: pillarMat, banners, lip: lipMat, platforms, ...details,
   };
 }
 

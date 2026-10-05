@@ -12,21 +12,29 @@ const THROW_RANGE = ATTACKS.throw.reach - 0.1;
 // Intents the bot holds until `intentUntil` instead of re-deciding.
 const DEFENCES = new Set(['block', 'lowblock', 'crouch']);
 
-// A jump clears about 2.82 units; platforms within this rise can be climbed.
-const MAX_CLIMB = 2.65;
+// A jump clears about 3.08 units; platforms within this rise can be climbed.
+const MAX_CLIMB = 2.95;
 
 /**
- * Where to stand to follow `opp` onto a higher platform: under the next
- * platform reachable from `me`'s level, preferring the one the opponent is
- * on. Returns an x to jump straight up from, or null if none is reachable.
+ * How to follow `goal` onto a higher platform. Platforms are solid, so the
+ * climb starts next to an edge of the next reachable platform (preferring
+ * the one the goal is on) and jumps toward it. Returns { x, dir } (stand at
+ * x, jump in direction dir) or null if nothing is reachable.
  */
-function climbSpot(me, opp, clock) {
-  const reachable = platformsAt(clock).filter((p) => p.y > me.y + 0.3 && p.y <= me.y + MAX_CLIMB);
+function climbSpot(me, goal, clock) {
+  const all = platformsAt(clock);
+  const reachable = all.filter((p) => p.y > me.y + 0.3 && p.y <= me.y + MAX_CLIMB);
   if (!reachable.length) return null;
   const centre = (p) => (p.x0 + p.x1) / 2;
-  const p = reachable.find((q) => opp.x >= q.x0 && opp.x <= q.x1)
-    || reachable.sort((a, b) => Math.abs(centre(a) - opp.x) - Math.abs(centre(b) - opp.x))[0];
-  return Math.max(p.x0 + 0.5, Math.min(p.x1 - 0.5, me.x));
+  const p = reachable.find((q) => goal.x >= q.x0 && goal.x <= q.x1)
+    || reachable.sort((a, b) => Math.abs(centre(a) - goal.x) - Math.abs(centre(b) - goal.x))[0];
+  // Approach from the side we are on (or the nearer edge when underneath).
+  const fromLeft = me.x < centre(p);
+  let x = fromLeft ? p.x0 - 0.6 : p.x1 + 0.6;
+  // Up on a platform ourselves: the take-off spot must be on it.
+  const own = all.find((q) => Math.abs(q.y - me.y) < 1e-6 && me.x >= q.x0 && me.x <= q.x1);
+  if (own) x = Math.max(own.x0 + 0.2, Math.min(own.x1 - 0.2, x));
+  return { x, dir: fromLeft ? 1 : -1 };
 }
 
 /** BOT_LEVELS entry for a difficulty (BOT_DIFFICULTIES index) and round (1-based). */
@@ -190,22 +198,18 @@ export function createBot(index, difficulty = DEFAULT_DIFFICULTY) {
         const spot = climbSpot(me, goal, state.clock || 0);
         if (spot !== null) {
           queued = [];
-          if (Math.abs(spot - me.x) > 0.25) input[spot > me.x ? 'right' : 'left'] = true;
+          if (Math.abs(spot.x - me.x) > 0.25) input[spot.x > me.x ? 'right' : 'left'] = true;
           else if (time >= nextDecision) {
             input.jump = true;
+            input[spot.dir > 0 ? 'right' : 'left'] = true;
             nextDecision = time + lvl.reaction;
           }
           return input;
         }
-      } else if (dy < -0.5) {
+      } else if (dy < -0.5 && goalDist > 0.4) {
+        // Down: walk off the edge toward the goal.
         queued = [];
-        if (goalDist < 2.5 && time >= nextDecision) {
-          input.down = true;
-          input.jump = true;
-          nextDecision = time + lvl.reaction;
-        } else {
-          input[goalToward > 0 ? 'right' : 'left'] = true;
-        }
+        input[goalToward > 0 ? 'right' : 'left'] = true;
         return input;
       }
     }

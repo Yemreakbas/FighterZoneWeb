@@ -5,21 +5,27 @@ export const ARENA = {
   halfWidth: 9,       // fighters are clamped to [-halfWidth, halfWidth] on X
   groundY: 0,
   /**
-   * One-way platforms { x0, x1, y, move? }: jump up through them from below,
-   * land on them from above, drop through with down + jump. Side platforms
-   * sit high enough that the slab's underside (y - 0.28) clears the drawn
-   * fighter's head (about 2.17 with idle/walk bob, see fighterView), so
-   * fighters walk under them. A jump peaks at
-   * jumpVelocity^2 / (2 * |gravity|) = 2.82, so the side platforms are
-   * reachable from the floor and the top one only from a side platform. `move` slides a platform along X:
+   * Solid platforms { x0, x1, y, move? }: slabs `slab` thick whose top is at
+   * `y`. Fighters land on top, bump their head on the underside and are
+   * stopped by the edges, so they climb on from the side: jump toward a
+   * platform from next to it and the jump carries them over the edge once
+   * their feet clear the top. Walk off an edge to get down.
+   * Side platforms sit high enough that the underside clears the drawn
+   * fighter's head (BODY.drawnHeight), so fighters walk under them, and the
+   * top platform clears the head of someone standing on a side platform.
+   * A jump peaks at jumpVelocity^2 / (2 * |gravity|) = 3.08, so the side
+   * platforms are reachable from the floor and the top one only from a side
+   * platform. Heights are chosen so a jump from the floor (head at
+   * 3.08 + drawnHeight = 5.26) never reaches the top slab's underside (5.47):
+   * the mover can swing anywhere without capping a climb onto a side platform. `move` slides a platform along X:
    * offset = amp * sin(2 * PI * clock / period); riders are carried along.
    */
   platforms: [
-    { x0: -6.6, x1: -3.2, y: 2.55 },
-    { x0: 3.2, x1: 6.6, y: 2.55 },
-    { x0: -1.8, x1: 1.8, y: 4.9, move: { amp: 3.4, period: 9 } },
+    { x0: -6.6, x1: -3.2, y: 2.9 },
+    { x0: 3.2, x1: 6.6, y: 2.9 },
+    { x0: -1.8, x1: 1.8, y: 5.75, move: { amp: 3.4, period: 9 } },
   ],
-  dropThrough: 0.25,  // seconds a dropping fighter ignores platforms
+  slab: 0.28,
 };
 
 export const CAMERA = {
@@ -45,7 +51,7 @@ export const PHYSICS = {
   gravity: -30,
   walkSpeed: 4.2,
   backWalkFactor: 0.75, // walking away from the opponent is slower
-  jumpVelocity: 13,
+  jumpVelocity: 13.6,
   jumpForwardSpeed: 4,
   knockbackDecay: 8,    // per-second exponential decay of knockback velocity
   minSeparation: 0.8,   // fighters cannot overlap closer than this on X
@@ -56,6 +62,9 @@ export const BODY = {
   width: 0.7,
   height: 1.9,
   crouchHeight: 1.15,
+  // Top of the drawn model's head (fighterView proportions, incl. bob); used
+  // for platform collisions so nothing visibly sticks into a slab.
+  drawnHeight: 2.18,
 };
 
 /**

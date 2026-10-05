@@ -202,6 +202,14 @@ export function renderLobby(lobby, you, isHost, characters) {
   }
 }
 
+const GRAPHICS_NAMES = { auto: 'OTO', 0: 'DÜŞÜK', 1: 'ORTA', 2: 'YÜKSEK' };
+/** Menu button text for the graphics quality setting. */
+export function setGraphicsLabel(mode) {
+  for (const el of document.querySelectorAll('[data-action="graphics"]')) {
+    el.textContent = `GRAFİK: ${GRAPHICS_NAMES[mode] ?? 'OTO'}`;
+  }
+}
+
 /** Routes `data-action` button clicks to a handler map (handler gets the button). */
 export function bindActions(handlers) {
   document.addEventListener('click', (e) => {

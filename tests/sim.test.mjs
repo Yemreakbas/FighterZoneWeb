@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { ARENA, ARENAS, ATTACKS, BOT_DIFFICULTIES, BOT_LEVELS, CHARACTERS, MATCH, COMBO_BREAK, NET, PICKUPS, PHYSICS, SWEEP, TICK, TRAINING } from '../js/config.js';
+import { ARENA, ARENAS, ATTACKS, BODY, BOT_DIFFICULTIES, BOT_LEVELS, CHARACTERS, MATCH, COMBO_BREAK, NET, PICKUPS, PHYSICS, SWEEP, TICK, TRAINING } from '../js/config.js';
 import { EMPTY_INPUT, platformsAt } from '../js/fighter.js';
 import { createMatch, targetOf } from '../js/game.js';
 import { botLevel, createBot } from '../js/bot.js';
@@ -202,28 +202,50 @@ test('a sweep on a fighter already in the air is just a kick', () => {
 
 const [leftPlat, rightPlat, topPlat] = ARENA.platforms;
 
-test('jumping up through a platform lands on top of it', () => {
+/**
+ * Fighter 1 climbs onto the right side platform from the floor: stand just
+ * left of its edge (facing right, opponent far right) and jump toward it.
+ */
+function onRightPlatform() {
+  const m = fightAt(9, rightPlat.x0 - 0.6);
+  run(m, 60, (t) => [{}, t === 0 ? { jump: true, right: true } : {}]);
+  return m;
+}
+
+test('platforms are solid from below: a jump underneath bumps the head', () => {
   const m = fightAt(-8, rightPlat.x0 + 1);
-  run(m, 60, (t) => [{}, t === 0 ? { jump: true } : {}]);
+  let peak = 0;
+  run(m, 60, (t) => {
+    peak = Math.max(peak, m.state.fighters[1].y);
+    return [{}, t === 0 ? { jump: true } : {}];
+  });
   const f = m.state.fighters[1];
-  assert.equal(f.y, rightPlat.y);
-  assert.ok(f.grounded);
+  assert.equal(f.y, ARENA.groundY, 'back on the floor, not on top');
+  assert.ok(peak + BODY.drawnHeight <= rightPlat.y - ARENA.slab + 1e-6, 'head never entered the slab');
 });
 
-test('down + jump drops through a platform to the floor', () => {
-  const m = fightAt(-8, rightPlat.x0 + 1);
-  run(m, 60, (t) => [{}, t === 0 ? { jump: true } : {}]);
-  run(m, 60, (t) => [{}, { down: t < 2, jump: t === 1 }]);
+test('jumping toward a platform from beside it climbs over the edge onto it', () => {
+  const m = onRightPlatform();
   const f = m.state.fighters[1];
-  assert.equal(f.y, ARENA.groundY);
-  assert.ok(f.grounded);
+  assert.equal(f.y, rightPlat.y);
+  assert.ok(f.grounded && f.x >= rightPlat.x0);
+});
+
+test('walking into a platform edge mid-jump never puts the body inside the slab', () => {
+  const m = fightAt(9, rightPlat.x0 - 0.6);
+  for (let t = 0; t < 60; t++) {
+    run(m, 1, () => [{}, t === 0 ? { jump: true, right: true } : {}]);
+    const f = m.state.fighters[1];
+    const insideX = f.x + BODY.width / 2 > rightPlat.x0 + 1e-6 && f.x - BODY.width / 2 < rightPlat.x1;
+    const insideY = f.y < rightPlat.y - 1e-6 && f.y + BODY.drawnHeight > rightPlat.y - ARENA.slab + 1e-6;
+    assert.ok(!(insideX && insideY), `tick ${t}: x=${f.x.toFixed(2)} y=${f.y.toFixed(2)}`);
+  }
 });
 
 test('walking off a platform edge falls to the floor', () => {
-  const m = fightAt(-8, rightPlat.x0 + 0.3);
-  run(m, 60, (t) => [{}, t === 0 ? { jump: true } : {}]);
+  const m = onRightPlatform();
   assert.equal(m.state.fighters[1].y, rightPlat.y);
-  run(m, 60, () => [{}, { left: true }]);
+  run(m, 90, () => [{}, { left: true }]);
   const f = m.state.fighters[1];
   assert.equal(f.y, ARENA.groundY);
   assert.ok(f.grounded);
@@ -235,19 +257,20 @@ test('the top platform is reachable from a side platform, not from the floor', (
   run(fromFloor, 60, (t) => [{}, t === 0 ? { jump: true } : {}]);
   assert.equal(fromFloor.state.fighters[1].y, ARENA.groundY);
 
-  // From the right side platform: wait until the mover passes overhead, jump.
-  const m = fightAt(8, rightPlat.x0 + 0.6);
-  run(m, 60, (t) => [{}, t === 0 ? { jump: true } : {}]);
-  assert.equal(m.state.fighters[1].y, rightPlat.y);
-  const x = m.state.fighters[1].x;
+  // From the right side platform's left end: wait until the mover's right
+  // edge is just to our left and coming our way, then jump toward it.
+  const m = onRightPlatform();
+  const f = m.state.fighters[1];
+  run(m, 60, () => [{}, { left: f.x > rightPlat.x0 + 0.25 }]);
   let waited = 0;
-  while (waited++ < 600) {
+  while (waited++ < 900) {
     const top = platformsAt(m.state.clock)[2];
-    if (x > top.x0 + 0.8 && x < top.x1 - 0.8) break;
+    const approaching = platformsAt(m.state.clock + 0.05)[2].x1 > top.x1;
+    if (approaching && top.x1 < f.x - 0.4 && top.x1 > f.x - 1.2) break;
     run(m, 1, () => [{}, {}]);
   }
-  run(m, 60, (t) => [{}, t === 0 ? { jump: true } : {}]);
-  assert.equal(m.state.fighters[1].y, topPlat.y);
+  run(m, 60, (t) => [{}, t === 0 ? { jump: true, left: true } : {}]);
+  assert.equal(f.y, topPlat.y);
 });
 
 test('the moving platform carries a fighter standing on it', () => {
@@ -279,14 +302,15 @@ test('the platform clock survives the network round trip', () => {
 });
 
 test('a fighter cannot throw someone standing on a different level', () => {
-  const m = fightAt(leftPlat.x1 - 0.2, leftPlat.x1 + 0.4);
-  // Put fighter 1 on the floor next to fighter 0 standing on the platform.
-  run(m, 60, (t) => [t === 0 ? { jump: true } : {}, {}]);
-  assert.equal(m.state.fighters[0].y, leftPlat.y);
+  const m = fightAt(-9, 0);
+  const [a, b] = m.state.fighters;
+  Object.assign(a, { x: leftPlat.x1 - 0.2, y: leftPlat.y, grounded: true, facing: 1 });
+  b.x = leftPlat.x1 + 0.4;
+  run(m, 2, () => [{}, {}]);
+  assert.equal(a.y, leftPlat.y);
   const ev = hits(run(m, 40, (t) => [t === 0 ? { right: true, punch: true } : {}, {}]));
   assert.ok(!ev.some((e) => e.throw));
 });
-
 // ---------------------------------------------------------------------------
 // Special cooldown
 // ---------------------------------------------------------------------------
@@ -874,7 +898,8 @@ test('no power-ups in training; the crystal survives the network round trip', ()
 
 /** Caster `char` fires at a defender 4 units away doing `defence`. */
 function specialVs(char, defence) {
-  const m = fightAt(0, 4, [char, 1]);
+  // Defender clear of the side platforms so a jump isn't stopped by a slab.
+  const m = fightAt(-1.5, 2.5, [char, 1]);
   return hits(run(m, 90, (t) => [t === 0 ? { special: true } : {}, defence(t, m)]));
 }
 

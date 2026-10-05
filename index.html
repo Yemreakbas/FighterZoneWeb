@@ -87,6 +87,7 @@
       <button class="btn" data-action="host">ODA KUR (HOST)</button>
       <button class="btn" data-action="join">ODAYA KATIL (JOIN)</button>
       <button class="btn secondary" data-action="help">NASIL OYNANIR</button>
+      <button class="btn secondary" data-action="graphics">GRAFİK: OTO</button>
       <button class="btn secondary touch-only" data-action="fullscreen">TAM EKRAN</button>
       <p class="status" id="menu-status"></p>
     </div>
@@ -174,7 +175,7 @@
           <tr><td>Hareket</td><td><kbd>A</kbd> <kbd>D</kbd> / <kbd>←</kbd> <kbd>→</kbd></td><td>D-pad / sol analog</td><td>◀ ▶</td></tr>
           <tr><td>Zıpla</td><td><kbd>W</kbd> / <kbd>↑</kbd> / <kbd>Space</kbd></td><td>↑</td><td>▲</td></tr>
           <tr><td>Eğil</td><td><kbd>S</kbd> / <kbd>↓</kbd></td><td>↓</td><td>▼</td></tr>
-          <tr><td>Platformdan in</td><td><kbd>S</kbd> + <kbd>W</kbd></td><td>↓ + ↑</td><td>▼▼ (çift dokun)</td></tr>
+          <tr><td>Platforma çık</td><td>Kenarına doğru ileri + <kbd>W</kbd></td><td>İleri + ↑</td><td>▶ + ▲</td></tr>
           <tr><td>Yumruk</td><td><kbd>J</kbd></td><td>X [□]</td><td>YUMRUK</td></tr>
           <tr><td>Tekme</td><td><kbd>K</kbd></td><td>A [✕]</td><td>TEKME</td></tr>
           <tr><td>Özel (enerji topu)</td><td><kbd>U</kbd></td><td>B [○]</td><td>ÖZEL</td></tr>
@@ -195,7 +196,7 @@
         <li>Ekranda oyuncu başına tek özel atış olabilir. Aynı yükseklikteki iki atış çarpışırsa birbirini yok eder.</li>
         <li>Maçı bitiren K.O.'dan sonra <b>FINISH HIM!</b> gelir. 4 saniye içinde özel hareketle vurursan <b>FATALITY</b>.</li>
         <li>İki round alan maçı kazanır.</li>
-        <li><b>Platformlara</b> zıplayarak (<kbd>W</kbd>) çık, <b>aşağı + zıpla</b> ile in. Ortadaki üst platforma yan platformlardan ulaşılır.</li>
+        <li><b>Platformlar katıdır:</b> altından zıplarsan kafan çarpar. Platformun yanından ona doğru zıpla (ileri + <kbd>W</kbd>), kenarından üstüne çıkarsın. İnmek için kenardan yürü. Üstteki hareketli platforma yan platformlardan binilir.</li>
         <li>Maç sırasında platformlarda <b>kristal</b> belirir: <b>yeşil</b> 25 can verir, <b>mavi</b> özel hareketi anında doldurur. 10 saniye içinde alınmazsa kaybolur.</li>
         <li><b>Özel hareket</b> kullanınca 3 saniye dolması gerekir; can barının altındaki mavi çubuk dolunca hazırdır.</li>
         <li><b>2v2</b>'de takım arkadaşına vuramazsın. Canı biten yere düşer, takımın hepsi düşünce round biter.</li>
@@ -211,6 +212,7 @@
       <p class="status" id="pause-note"></p>
       <button class="btn" data-action="resume">DEVAM ET</button>
       <button class="btn secondary" data-action="music">MÜZİK AÇ / KAPA</button>
+      <button class="btn secondary" data-action="graphics">GRAFİK: OTO</button>
       <button class="btn secondary" data-action="help">NASIL OYNANIR</button>
       <button class="btn secondary" data-action="back">ANA MENÜ</button>
     </div>

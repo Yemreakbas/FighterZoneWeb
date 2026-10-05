@@ -65,11 +65,11 @@ Bir dövüşçü sersemken üst üste en fazla **2 vuruş** yiyebilir. İkinci v
 
 ## Platformlar ve arena
 
-Her arenada üç tek yönlü platform var:
-- İki yanda **2,2 m**'de sabit platform. Dövüşçü boyunun üstünde oldukları için altlarından rahatça yürünür.
-- Ortada **4,3 m**'de zincirle asılı, sağa sola gidip gelen **hareketli platform**. Üstündeki dövüşçüyü de beraberinde taşır. Yerden ulaşılmaz; yan platformun üstünden geçerken zıplayarak binilir.
+Her arenada üç **katı** platform var:
+- İki yanda **2,9 m**'de sabit platform. Dövüşçünün kafasının üstünde kaldığı için altlarından rahatça yürünür.
+- Ortada **5,75 m**'de zincirle asılı, sağa sola gidip gelen **hareketli platform**. Üstündeki dövüşçüyü taşır. Yerden ulaşılmaz; yan platformdan, yaklaşırken ona doğru zıplayarak binilir.
 
-Alttan **zıplayarak** (W) içinden geçip üstüne çıkılır, **aşağı + zıpla** (dokunmatikte ▼▼) ile inilir, kenardan yürüyerek düşülür. Fırlatma sadece aynı seviyedeki rakibe yapılır. Botlar da platformlara çıkıp iner. Hareketli platformun konumu maç saatinden hesaplanır, online maçta host ve istemci aynı yeri görür.
+Platformların içinden geçilmez: altından zıplarsan kafan çarpar, yandan gelirsen kenarına çarparsın. Platforma çıkmak için **yanından ona doğru zıpla** (ileri + W). Zıplama devam ederken ayakların kenarı aşınca üstüne çıkarsın; ayaklar kenardan biraz taşsa bile basılır. İnmek için kenardan yürü. Yerden zıplayan birinin kafası üstteki platforma hiçbir yükseklikte yetişmez, hareketli platform tırmanmayı kesmez. Fırlatma sadece aynı seviyedeki rakibe yapılır. Botlar da kenardan tırmanır, kenardan yürüyerek iner. Hareketli platformun konumu maç saatinden hesaplanır, online maçta herkes aynı yeri görür.
 
 Arka planda sütunlar ve titreyen meşaleler, sınırlarda sandıklar ve fıçılar, yerde arena amblemi var. Hepsi ekstra ışık kullanmadan çizilir.
 
@@ -101,9 +101,15 @@ Maç sırasında, tıpkı ses efektleri gibi Web Audio ile kodda üretilen bir m
 
 ## Performans
 
-- Telefonlarda orta kalite ile başlar: piksel oranı en fazla 1,5, MSAA kapalı, daha ucuz gölge filtresi.
-- Kare süresi 2 saniye boyunca ortalama 25 ms'yi aşarsa kalite kendiliğinden bir kademe düşer (en düşükte gölge kapanır).
-- Enerji toplarının nokta ışıkları kaldırıldı, dövüşçüler gölge alma hesabı yapmaz, sabit dekor her karede matris güncellemez.
+- Menüde **GRAFİK** ayarı var: OTO / DÜŞÜK / ORTA / YÜKSEK (tarayıcıda hatırlanır).
+  - DÜŞÜK: gölge yok, çözünürlük 0,85x.
+  - ORTA: 1024'lük gölge, en fazla 1,25x.
+  - YÜKSEK: 2048'lik gölge, en fazla 1,75x.
+- OTO'da telefonlar ORTA, diğer cihazlar YÜKSEK ile başlar. Kare hızı 2 saniye boyunca ortalama 50 fps'in altında kalırsa kalite kendiliğinden bir kademe düşer.
+- Telefonlarda kenar yumuşatma (MSAA) kapalı. Gölge filtresi her cihazda ucuz PCF; gölge kamerası arenaya sıkı oturur.
+- Sahnede sadece 3 nokta ışık var: iki renkli kenar ışığı ve vuruş parlaması. Enerji topları ve meşaleler ışık yerine parlak malzemeyle çizilir.
+- Açılışta tüm shader'lar önceden derlenir, böylece ilk enerji topu, kristal ya da fatality'de takılma olmaz.
+- Dövüşçüler gölge alma hesabı yapmaz, sabit dekor her karede matris güncellemez.
 
 ## Özel hareket bekleme süresi
 
@@ -170,7 +176,7 @@ Dokunmatik cihazlarda ekranda yön tuşları ve YUMRUK / TEKME / ÖZEL / BLOK bu
 **Mobil:**
 - Oyun yatay ekran için tasarlandı. Telefon dikey tutulunca "yan çevir" uyarısı çıkar ve tek oyunculu maç duraklar.
 - Ana menüdeki **TAM EKRAN** tarayıcı çubuklarını gizler ve destekleyen tarayıcılarda (Android Chrome) ekranı yataya kilitler.
-- Platformdan inmek için **▼'ye çift dokun** (klavyedeki aşağı + zıpla ile aynı).
+- Platforma çıkmak için yanından ona doğru ▶ (ya da ◀) basılıyken ▲'ye dokun; inmek için kenardan yürü.
 - ÖZEL butonu bekleme süresince sönük durur ve alttan dolar.
 - Kısa ekranlarda HUD, menüler ve lobi sıkıştırılır, kamera dövüşçülere biraz yaklaşır.
 
