@@ -1,6 +1,6 @@
 import { ARENA, HITSTOP, MATCH, ROUND_FLOW, TRAINING } from './config.js';
 import {
-  EMPTY_INPUT, applyContact, applyThrow, bufferPress, createFighter, findHit, findThrow, hurtbox, overlaps, projectileBox,
+  EMPTY_INPUT, applyContact, applyThrow, bufferPress, createFighter, findHit, findThrow, hurtbox, isKnockedDown, overlaps, projectileBox,
   projectileHit, separate, spawnProjectile, stepFighter,
 } from './fighter.js';
 
@@ -80,7 +80,7 @@ export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1], ar
       } else {
         t.quiet += dt;
       }
-      const recovering = f.action === 'hit' || f.action === 'thrown';
+      const recovering = f.action === 'hit' || isKnockedDown(f);
       if (f.hp <= 0 || (t.quiet >= TRAINING.refillDelay && !recovering)) {
         f.hp = MATCH.maxHp;
         if (t.quiet >= TRAINING.refillDelay) t.dealt = 0;
@@ -145,7 +145,7 @@ export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1], ar
     // only the winner moves.
     const live = state.phase === 'fight';
     const controls = (i) => live || (state.phase === 'finish' && i === state.roundWinner);
-    const airborneThrown = state.fighters.map((f) => f.action === 'thrown');
+    const airborneThrown = state.fighters.map(isKnockedDown);
     stepFighter(a, controls(0) ? inputs[0] : EMPTY_INPUT, b, dt);
     stepFighter(b, controls(1) ? inputs[1] : EMPTY_INPUT, a, dt);
     state.fighters.forEach((f, i) => {

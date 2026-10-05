@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { ARENA, ARENAS, ATTACKS, BOT_DIFFICULTIES, BOT_LEVELS, CHARACTERS, MATCH, NET, PHYSICS, TICK, TRAINING } from '../js/config.js';
+import { ARENA, ARENAS, ATTACKS, BOT_DIFFICULTIES, BOT_LEVELS, CHARACTERS, MATCH, NET, PHYSICS, SWEEP, TICK, TRAINING } from '../js/config.js';
 import { EMPTY_INPUT } from '../js/fighter.js';
 import { createMatch } from '../js/game.js';
 import { botLevel, createBot } from '../js/bot.js';
@@ -136,6 +136,64 @@ test('a throw whiffs on a jumping opponent and leaves the thrower open', () => {
   assert.equal(ev.length, 0);
   assert.equal(m.state.fighters[1].hp, MATCH.maxHp);
   assert.equal(m.state.fighters[0].action, 'throw', 'still recovering from the whiff');
+});
+
+// ---------------------------------------------------------------------------
+// Sweeps
+// ---------------------------------------------------------------------------
+
+// Crouch for a tick, then kick from the crouch.
+const sweepAt0 = (t) => ({ down: t < 30, kick: t === 1 });
+
+test('a sweep goes through a standing block and knocks the opponent down', () => {
+  const m = fightAt(0, 1.2);
+  const ev = run(m, 90, (t) => [sweepAt0(t), { block: true }]);
+  const [hit] = hits(ev);
+  assert.equal(hit?.blocked, false);
+  assert.equal(hit.sweep, true);
+  assert.equal(m.state.fighters[1].hp, MATCH.maxHp - SWEEP.damage);
+  assert.ok(ev.some((e) => e.type === 'slam' && e.target === 1), 'expected the victim to hit the floor');
+  assert.ok(m.state.fighters[1].grounded);
+});
+
+test('a crouching block stops a sweep', () => {
+  const m = fightAt(0, 1.2);
+  const ev = hits(run(m, 60, (t) => [sweepAt0(t), { block: true, down: true }]));
+  assert.equal(ev.length, 1);
+  assert.equal(ev[0].blocked, true);
+  assert.ok(!ev[0].sweep);
+  assert.equal(m.state.fighters[1].hp, MATCH.maxHp - ATTACKS.kick.chip);
+  assert.equal(m.state.fighters[1].action, 'block');
+});
+
+test('a crouching block still stops a standing kick', () => {
+  const m = fightAt(0, 1);
+  const ev = hits(run(m, 40, (t) => [t === 0 ? { kick: true } : {}, { block: true, down: true }]));
+  assert.equal(ev[0]?.blocked, true);
+});
+
+test('a whiffed sweep recovers later than a standing kick', () => {
+  const a = ATTACKS.kick;
+  const kickTicks = Math.ceil((a.startup + a.active + a.recovery) / TICK) + 1;
+  const kick = fightAt(0, 5);
+  run(kick, kickTicks, (t) => [t === 0 ? { kick: true } : {}, {}]);
+  assert.notEqual(kick.state.fighters[0].action, 'kick', 'standing kick has recovered');
+
+  const sweep = fightAt(0, 5);
+  run(sweep, kickTicks + 1, (t) => [{ down: true, kick: t === 1 }, {}]);
+  assert.equal(sweep.state.fighters[0].action, 'kick', 'sweep is still recovering');
+});
+
+test('a sweep on a fighter already in the air is just a kick', () => {
+  const m = fightAt(0, 1.2);
+  // Wind the sweep up, then lift the defender just off the floor so the
+  // low hitbox still reaches them as the active window opens.
+  run(m, Math.floor(ATTACKS.kick.startup / TICK), (t) => [sweepAt0(t), {}]);
+  Object.assign(m.state.fighters[1], { y: 0.3, vy: 0, grounded: false, action: 'jump' });
+  const ev = hits(run(m, 6, (t) => [{ down: true }, {}]));
+  assert.equal(ev.length, 1);
+  assert.ok(!ev[0].sweep, 'airborne fighters are not swept');
+  assert.equal(m.state.fighters[1].action, 'hit');
 });
 
 // ---------------------------------------------------------------------------

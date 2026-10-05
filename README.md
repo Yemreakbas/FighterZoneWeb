@@ -46,7 +46,7 @@ Tüm yollar göreli olduğu için oyun hangi klasörde olursa olsun çalışır.
 ## Modlar
 
 - **Tek oyunculu (Bot):** Karakter seçim ekranında zorluk seçilir (KOLAY / NORMAL / ZOR, tarayıcıda hatırlanır). Bot her roundda bir kademe güçlenir: daha hızlı tepki verir, daha sık bloklar, daha çok kombo yapar. KOLAY'da tavanı düşük kalır, ZOR'da en baştan sert başlar.
-- **Antrenman:** Süresiz, bitmeyen tek round. Kuklanın davranışı seçilir: DUR / BLOK / EĞİL / ZIPLA. Kombonun toplam hasarı kuklanın can barının altında görünür. Can, 1,2 saniye hasar almayınca dolar, K.O. olmaz. Çıkmak için Esc → Ana Menü.
+- **Antrenman:** Süresiz, bitmeyen tek round. Kuklanın davranışı seçilir: DUR / BLOK / ALT BLOK / EĞİL / ZIPLA. Kombonun toplam hasarı kuklanın can barının altında görünür. Can, 1,2 saniye hasar almayınca dolar, K.O. olmaz. Çıkmak için Esc → Ana Menü.
 - **Oda Kur / Odaya Katıl (P2P):** Host 4 haneli bir kod alır, rakip bu kodla bağlanır. Simülasyon host'ta çalışır. Client her karede numaralı girdisini gönderir ve kendi karakterini anında yerelde tahmin eder (client prediction). Host'tan gelen durumla karşılaştırıp gerekirse yumuşakça düzeltir. Rakibi ise bağlantı kalitesine göre 50-150 ms arası ayarlanan bir tamponla ara değerleyerek çizer.
 
 ## Fırlatma
@@ -58,6 +58,12 @@ Rakibe yapışıkken **ileri + yumruk** onu tutup omzunun üstünden arkana fır
 - Boşa giden fırlatmanın toparlanması uzundur, ceza yersin.
 
 Bot da blok yapan ya da eğilip bekleyen rakibe fırlatma dener.
+
+## Süpürme ve alt blok
+
+**Eğilip tekme** atmak bir süpürmedir: alçaktan vurur ve rakibi ayağından alıp sırt üstü yere serer (9 hasar, yere düşünce kısa sersemleme). Ayakta blok süpürmeyi durdurmaz. Sadece **aşağı + blok** ile yapılan alt blok durdurur. Karşılığında süpürmenin toparlanması normal tekmeden uzundur, bloklanırsa ya da boşa giderse ceza yersin.
+
+Böylece savunmada tahmin oyunu oluşur: ayakta blok süpürmeye, alt blok ise fırlatmaya açıktır (fırlatma her bloğu deler). Bot, süpürme gördüğünde alt blok yapar, ayakta blok yapan rakibe de zaman zaman süpürme atar.
 
 ## FINISH HIM
 

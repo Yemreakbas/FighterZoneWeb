@@ -1,10 +1,11 @@
-import { ARENA, ATTACKS, BODY, CHARACTERS, CROUCH_ATTACK_DROP, INPUT_BUFFER, MATCH, PHYSICS, PROJECTILE } from './config.js';
+import { ARENA, ATTACKS, BODY, CHARACTERS, CROUCH_ATTACK_DROP, INPUT_BUFFER, MATCH, PHYSICS, PROJECTILE, SWEEP } from './config.js';
 
 // Pure simulation of a single fighter. State is plain JSON-friendly data so
 // the host can serialize it straight into network snapshots. No Three.js here.
 //
 // Actions: idle | walk | crouch | jump | block | punch | kick | special | throw | hit
-//          | thrown (airborne after being thrown) | ko | win | dazed (FINISH HIM) | fatality
+//          | thrown (airborne after being thrown) | swept (knocked off the feet by a sweep)
+//          | ko | win | dazed (FINISH HIM) | fatality
 
 export const EMPTY_INPUT = Object.freeze({
   left: false, right: false, down: false, block: false,
@@ -30,12 +31,22 @@ export function createFighter(x, facing, char = 0) {
   };
 }
 
-const BUSY = new Set(['punch', 'kick', 'special', 'throw', 'hit', 'thrown', 'ko', 'win', 'dazed', 'fatality']);
+const BUSY = new Set(['punch', 'kick', 'special', 'throw', 'hit', 'thrown', 'swept', 'ko', 'win', 'dazed', 'fatality']);
 // States a grounded opponent can be grabbed from (not in hit- or blockstun).
 const THROWABLE = new Set(['idle', 'walk', 'crouch', 'block']);
 
 export function isAttacking(f) {
   return f.action === 'punch' || f.action === 'kick';
+}
+
+/** A kick started from a crouch on the ground: hits low and knocks down. */
+export function isSweep(f) {
+  return f.action === 'kick' && f.crouch && f.grounded;
+}
+
+/** Knocked into the air by a throw or a sweep, until landing. */
+export function isKnockedDown(f) {
+  return f.action === 'thrown' || f.action === 'swept';
 }
 
 /** True while the current attack's hitbox is live. */
@@ -89,7 +100,8 @@ export function stepFighter(f, input, opp, dt) {
     f.stun -= dt; // blockstun: locked in block
   } else if (isAttacking(f) || f.action === 'special' || f.action === 'throw') {
     const a = ATTACKS[f.action];
-    if (f.t >= a.startup + a.active + a.recovery) {
+    const recovery = a.recovery + (isSweep(f) ? SWEEP.extraRecovery : 0);
+    if (f.t >= a.startup + a.active + recovery) {
       setAction(f, f.grounded ? (f.crouch ? 'crouch' : 'idle') : 'jump');
     }
   }
@@ -167,12 +179,12 @@ function integrate(f, dt) {
     f.grounded = true;
     if (wasAirborne) {
       f.airAttack = false;
-      if (f.action === 'thrown') {
+      if (isKnockedDown(f)) {
         // Hitting the floor: a short stagger before getting back up.
+        f.stun = f.action === 'swept' ? SWEEP.landStun : ATTACKS.throw.landStun;
         f.vx = 0;
         f.action = 'hit';
         f.t = 0;
-        f.stun = ATTACKS.throw.landStun;
       }
       // Landing cancels an aerial attack and ends the jump.
       if (f.action === 'jump' || isAttacking(f)) {
@@ -248,6 +260,7 @@ export function findHit(attacker, defender) {
     attacker,
     defender,
     move: attacker.action,
+    sweep: isSweep(attacker),
     dir: attacker.facing,
     // Spark position: centre of the hitbox/hurtbox intersection.
     x: (Math.max(hb.x0, hu.x0) + Math.min(hb.x1, hu.x1)) / 2,
@@ -256,10 +269,35 @@ export function findHit(attacker, defender) {
 }
 
 /** Apply a contact from findHit. Returns the hit event. */
-export function applyContact({ attacker, defender, move, dir, x, y }) {
+export function applyContact({ attacker, defender, move, sweep, dir, x, y }) {
   attacker.attackHit = true;
-  const blocked = applyHit(ATTACKS[move], dir, defender, stats(attacker).power);
+  const power = stats(attacker).power;
+  if (sweep) {
+    const blocked = applySweep(dir, defender, power);
+    return { type: 'hit', blocked, heavy: true, sweep: defender.action === 'swept', x, y };
+  }
+  const blocked = applyHit(ATTACKS[move], dir, defender, power);
   return { type: 'hit', blocked, heavy: move === 'kick', x, y };
+}
+
+/**
+ * A sweep is only stopped by a crouching block. Otherwise it takes the legs
+ * out: a small pop into the air that lands as a knockdown. Fighters already
+ * airborne just take a normal kick (juggle).
+ */
+function applySweep(dir, defender, power) {
+  const lowBlock = defender.action === 'block' && defender.crouch && defender.facing === -dir;
+  if (lowBlock || !defender.grounded) return applyHit(ATTACKS.kick, dir, defender, power);
+  defender.hp = Math.max(0, defender.hp - SWEEP.damage * power);
+  defender.action = 'swept';
+  defender.t = 0;
+  defender.stun = 0;
+  defender.crouch = false;
+  defender.buffer = null;
+  defender.grounded = false;
+  defender.vy = SWEEP.popVy;
+  defender.vx = dir * SWEEP.slideVx;
+  return false;
 }
 
 /**
@@ -361,7 +399,7 @@ export function projectileHit(p, defender) {
 export function separate(a, b) {
   const dx = b.x - a.x;
   if (Math.abs(a.y - b.y) > BODY.height * 0.6) return; // one is jumping over
-  if (a.action === 'thrown' || b.action === 'thrown') return; // flying over the thrower
+  if (isKnockedDown(a) || isKnockedDown(b)) return; // flying over / sliding past
   if (Math.abs(dx) >= PHYSICS.minSeparation) return;
 
   const dir = dx === 0 ? -a.facing || 1 : Math.sign(dx);

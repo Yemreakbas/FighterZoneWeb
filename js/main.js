@@ -193,11 +193,11 @@ function startSolo() {
 
 // ---- Training: endless round against a scripted dummy ---------------------
 
-/** Training dummy behaviour: 'stand' | 'block' | 'crouch' | 'jump'. */
+/** Training dummy behaviour: 'stand' | 'block' | 'lowblock' | 'crouch' | 'jump'. */
 let dummyMode = 'stand';
 
 function setDummy(btn) {
-  if (!['stand', 'block', 'crouch', 'jump'].includes(btn?.dataset.mode)) return;
+  if (!['stand', 'block', 'lowblock', 'crouch', 'jump'].includes(btn?.dataset.mode)) return;
   dummyMode = btn.dataset.mode;
   ui.setDummy(dummyMode, true);
 }
@@ -205,6 +205,7 @@ function setDummy(btn) {
 function dummyInput(me) {
   const input = { ...EMPTY_INPUT };
   if (dummyMode === 'block') input.block = true;
+  else if (dummyMode === 'lowblock') { input.block = true; input.down = true; }
   else if (dummyMode === 'crouch') input.down = true;
   else if (dummyMode === 'jump') input.jump = me.grounded && me.action !== 'hit';
   return input;

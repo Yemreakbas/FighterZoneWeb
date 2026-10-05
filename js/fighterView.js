@@ -130,7 +130,7 @@ function basePose() {
 }
 
 // Actions whose pose changes fast enough to need quicker easing.
-const SNAPPY = new Set(['punch', 'kick', 'special', 'throw', 'thrown']);
+const SNAPPY = new Set(['punch', 'kick', 'special', 'throw', 'thrown', 'swept']);
 
 const lerp = (a, b, t) => a + (b - a) * t;
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
@@ -255,6 +255,19 @@ function computePose(f, time) {
       p.nearShoulder = -2.4 + Math.sin(time * 18) * 0.5; p.nearElbow = -0.4;
       p.farShoulder = -2.0 - Math.sin(time * 18) * 0.5; p.farElbow = -0.5;
       p.nearHip = -0.9; p.nearKnee = 1.0; p.farHip = -0.3; p.farKnee = 0.6;
+      break;
+    }
+
+    case 'swept': {
+      // Legs taken out: feet fly forward, the body falls flat on its back
+      // over the short pop's airtime (2 * popVy / |gravity| = 0.3 s).
+      const fall = clamp01(f.t / 0.3);
+      p.tilt = -Math.PI / 2 * fall;
+      p.hipsY = lerp(0.95, 0.35, fall);
+      p.spineX = -0.3; p.headX = 0.35;
+      p.nearShoulder = -1.2 - fall; p.nearElbow = -0.3;
+      p.farShoulder = -0.9 - fall; p.farElbow = -0.4;
+      p.nearHip = -1.1; p.nearKnee = 0.2; p.farHip = -0.8; p.farKnee = 0.3;
       break;
     }
 

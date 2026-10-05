@@ -1,5 +1,5 @@
 import { ATTACKS, BOT_DIFFICULTIES, BOT_LEVELS, DEFAULT_DIFFICULTY } from './config.js';
-import { EMPTY_INPUT, isAttacking } from './fighter.js';
+import { EMPTY_INPUT, isAttacking, isSweep } from './fighter.js';
 
 // AI opponent. Produces the same input shape as a human player, so it plugs
 // into the authoritative simulation exactly like a remote/local controller.
@@ -8,6 +8,8 @@ import { EMPTY_INPUT, isAttacking } from './fighter.js';
 const PUNCH_RANGE = ATTACKS.punch.reach - 0.1;
 const KICK_RANGE = ATTACKS.kick.reach - 0.1;
 const THROW_RANGE = ATTACKS.throw.reach - 0.1;
+// Intents the bot holds until `intentUntil` instead of re-deciding.
+const DEFENCES = new Set(['block', 'lowblock', 'crouch']);
 
 /** BOT_LEVELS entry for a difficulty (BOT_DIFFICULTIES index) and round (1-based). */
 export function botLevel(difficulty, round) {
@@ -18,7 +20,7 @@ export function botLevel(difficulty, round) {
 export function createBot(index, difficulty = DEFAULT_DIFFICULTY) {
   let time = 0;
   let nextDecision = 0;
-  let intent = 'hold';   // approach | retreat | hold | block | crouch
+  let intent = 'hold';   // approach | retreat | hold | block | lowblock | crouch
   let intentUntil = 0;
   let queued = [];       // [{ type, at }] scheduled button presses (combos)
   let lastOpp = { action: 'idle', t: 0 };
@@ -33,7 +35,7 @@ export function createBot(index, difficulty = DEFAULT_DIFFICULTY) {
 
   function decide(state, opp, lvl, dist) {
     nextDecision = time + lvl.reaction * (0.7 + rand() * 0.6);
-    if ((intent === 'block' || intent === 'crouch') && time < intentUntil) return; // committed to a defence
+    if (DEFENCES.has(intent) && time < intentUntil) return; // committed to a defence
 
     // Anti-air: kick a falling opponent that is about to land on us.
     if (!opp.grounded && opp.vy < 0 && dist < KICK_RANGE + 0.3 && rand() < lvl.aggression) {
@@ -55,8 +57,16 @@ export function createBot(index, difficulty = DEFAULT_DIFFICULTY) {
       return;
     }
 
-    // A turtling opponent gets grabbed: block doesn't stop a throw.
+    // A turtling opponent gets grabbed (block doesn't stop a throw) or, if
+    // they block standing, swept (only a crouching block stops a sweep).
     const turtling = opp.grounded && (opp.action === 'block' || opp.action === 'crouch');
+    const highBlock = opp.action === 'block' && !opp.crouch;
+    if (turtling && highBlock && dist <= KICK_RANGE && rand() < lvl.aggression * 0.35) {
+      intent = 'crouch';
+      intentUntil = time + 0.25;
+      press('kick', 0.03); // crouch first so the kick starts low
+      return;
+    }
     if (turtling && rand() < lvl.aggression * 0.7) {
       intent = dist <= THROW_RANGE ? 'hold' : 'approach';
       press('throw', dist <= THROW_RANGE ? 0 : 0.15);
@@ -107,7 +117,7 @@ export function createBot(index, difficulty = DEFAULT_DIFFICULTY) {
     lastOpp = { action: opp.action, t: opp.t };
     if (newSwing && dist < KICK_RANGE + 0.6 && me.grounded && rand() < lvl.block) {
       const a = ATTACKS[opp.action];
-      intent = 'block';
+      intent = isSweep(opp) ? 'lowblock' : 'block';
       intentUntil = time + a.startup + a.active + 0.1;
       queued = [];
     }
@@ -127,8 +137,7 @@ export function createBot(index, difficulty = DEFAULT_DIFFICULTY) {
     }
 
     if (time >= nextDecision) decide(state, opp, lvl, dist);
-    if (intent === 'block' && time >= intentUntil) intent = 'hold';
-    if (intent === 'crouch' && time >= intentUntil) intent = 'hold';
+    if (DEFENCES.has(intent) && time >= intentUntil) intent = 'hold';
 
     // Fire scheduled presses (one per tick so each lands in its own frame).
     const due = queued.findIndex((q) => time >= q.at);
@@ -153,6 +162,10 @@ export function createBot(index, difficulty = DEFAULT_DIFFICULTY) {
         break;
       case 'block':
         input.block = true;
+        break;
+      case 'lowblock':
+        input.block = true;
+        input.down = true;
         break;
       case 'crouch':
         input.down = true;

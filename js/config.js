@@ -81,6 +81,17 @@ ATTACKS.throw = {
 };
 
 /**
+ * Sweep: a kick started from a crouch. It hits low, so only a crouching
+ * block stops it; a clean sweep knocks the victim off their feet. It reuses
+ * the kick's frame data but recovers more slowly, so a blocked or whiffed
+ * sweep can be punished.
+ */
+export const SWEEP = {
+  damage: 9, extraRecovery: 0.18,
+  popVy: 4.5, slideVx: 2.5, landStun: 0.5,
+};
+
+/**
  * Projectile travels at chest height: crouching (hurtbox top 1.15) ducks
  * under it and jumping clears it. One projectile per fighter at a time.
  */

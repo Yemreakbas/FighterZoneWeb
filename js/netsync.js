@@ -121,7 +121,7 @@ export function encodeSnapshot(state, tick, events, ack = 0) {
 const PHASES = new Set(['intro', 'fight', 'finish', 'roundEnd', 'over']);
 const ACTIONS = new Set([
   'idle', 'walk', 'crouch', 'jump', 'block', 'punch', 'kick', 'special', 'throw',
-  'hit', 'thrown', 'ko', 'win', 'dazed', 'fatality',
+  'hit', 'thrown', 'swept', 'ko', 'win', 'dazed', 'fatality',
 ]);
 const validChar = (c) => (Number.isInteger(c) && c >= 0 && c < CHARACTERS.length ? c : 0);
 const num = (v, fallback = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);

@@ -90,8 +90,8 @@ export function createEffects(scene) {
       d.mesh.position.x += d.vx * dt;
       d.mesh.position.y += d.vy * dt;
       d.mesh.position.z += d.vz * dt;
-      d.mesh.scale.set(d.size * (1 + k * 2.5), d.size * (0.6 + k * 1.2), d.size * (1 + k * 2.5));
-      d.mesh.material.opacity = 0.55 * (1 - k);
+      d.mesh.scale.set(d.size * (1 + k * 1.6), d.size * (0.5 + k * 0.8), d.size * (1 + k * 1.6));
+      d.mesh.material.opacity = 0.4 * (1 - k);
     }
   }
 
