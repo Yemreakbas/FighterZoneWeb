@@ -590,6 +590,7 @@ function connectToRoom() {
 }
 
 function enterFight() {
+  sound.startMusic();
   hud.reset();
   ui.setTrainingInfo(null);
   ui.setMenuStatus('');
@@ -625,6 +626,7 @@ function resume() {
 }
 
 function leaveToMenu(message = '') {
+  sound.stopMusic();
   effects.clearPieces();
   paused = false;
   pendingMode = null;
@@ -701,6 +703,7 @@ function handleEvents(events) {
       ui.announce(text, Math.min(num(e.ms) || 1200, 5000), e.style === 'blood' ? 'blood' : '');
       if (text.startsWith('ROUND') || text === 'ANTRENMAN') {
         sound.play('round');
+        sound.startMusic(); // also restarts it for an online client after a rematch
         effects.clearPieces();
       }
       else if (text === 'FIGHT!') sound.play('fight');
@@ -734,6 +737,7 @@ function handleEvents(events) {
       stage.shake(e.target === undefined ? 0.5 : 0.3);
       if (e.target === undefined) stage.punchZoom(1.2);
     } else if (e.type === 'over') {
+      sound.stopMusic();
       sound.play('victory');
     } else if (e.type === 'finish') {
       sound.play('finish');
@@ -780,12 +784,20 @@ ui.bindActions({
     paused = false;
     effects.clearPieces();
     session.rematch();
+    sound.startMusic();
     hud.reset();
     ui.showScreen(null);
   },
   back: () => leaveToMenu(),
   fullscreen: toggleFullscreen,
+  music: toggleMusic,
 });
+
+function toggleMusic() {
+  const text = sound.toggleMusic() ? 'MUZIK ACIK' : 'MUZIK KAPALI';
+  if (session) ui.announce(text, 800);
+  else ui.setMenuStatus(text);
+}
 
 /**
  * Phones: fullscreen hides the browser bars, and landscape is locked where
@@ -813,6 +825,7 @@ window.addEventListener('keydown', (e) => {
     if (session) ui.announce(text, 800);
     else ui.setMenuStatus(text);
   }
+  if (e.code === 'KeyN' && !e.target.matches?.('input')) toggleMusic();
 });
 // Switching tabs mid-fight pauses solo play instead of letting the bot win.
 document.addEventListener('visibilitychange', () => {

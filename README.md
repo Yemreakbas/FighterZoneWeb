@@ -95,6 +95,10 @@ Maç sırasında (antrenmanda değil) rastgele bir platformun üstünde dönen b
 
 Dokunan alır. 10 saniye içinde kimse almazsa kaybolur. Botlar canları azken ya da özel hareketleri dolarken, yakınlarında rakip yoksa kristale gider. Online maçta kristali host belirler, herkes aynısını görür.
 
+## Müzik
+
+Maç sırasında, tıpkı ses efektleri gibi Web Audio ile kodda üretilen bir müzik çalar: 132 BPM, Am–F–G–E akorlarında 4 ölçülük döngü. Bas, davul, hi-hat ve arada bir arpej var. Notalar ses saatine göre biraz önceden planlandığı için oyun yoğunken de tempo kaymaz. Maç bitince susar, menüde çalmaz. Ses dosyası yoktur.
+
 ## Performans
 
 - Telefonlarda orta kalite ile başlar: piksel oranı en fazla 1,5, MSAA kapalı, daha ucuz gölge filtresi.
@@ -156,6 +160,7 @@ Değerler `js/config.js` içindeki `CHARACTERS` listesinde. Yeni karakter ekleme
 | U | Özel hareket (enerji topu) |
 | L | Blok |
 | M | Sesi aç / kapat |
+| N | Müziği aç / kapat (tarayıcıda hatırlanır; dokunmatikte ❚❚ → MÜZİK) |
 | Esc | Duraklat (online maçta oyun arka planda sürer) |
 
 **Gamepad** (Xbox / PlayStation, tarayıcının standart eşlemesi): D-pad veya sol analog hareket, ↑ zıpla, ↓ eğil · X [□] yumruk · A [✕] tekme · B [○] özel · LB / RB / RT blok · Start duraklat. Menüler fare, klavye ya da dokunmatikle kullanılıyor.
