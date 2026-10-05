@@ -82,6 +82,10 @@ const SOUNDS = {
     noise(0.18, 400, 0.9);
     noise(0.12, 2200, 0.2, 'highpass', 0.06);
   },
+  pickup() {
+    // Bright rising chime.
+    [880, 1175, 1568].forEach((f, i) => tone(f, f, 0.12, 0.12, 'triangle', i * 0.06));
+  },
   block() {
     noise(0.05, 3000, 0.25, 'highpass');
     tone(950, 700, 0.05, 0.12, 'square');

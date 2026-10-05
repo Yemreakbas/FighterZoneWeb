@@ -4,8 +4,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { ARENA, ARENAS, ATTACKS, BOT_DIFFICULTIES, BOT_LEVELS, CHARACTERS, MATCH, COMBO_BREAK, NET, PHYSICS, SWEEP, TICK, TRAINING } from '../js/config.js';
-import { EMPTY_INPUT } from '../js/fighter.js';
+import { ARENA, ARENAS, ATTACKS, BOT_DIFFICULTIES, BOT_LEVELS, CHARACTERS, MATCH, COMBO_BREAK, NET, PICKUPS, PHYSICS, SWEEP, TICK, TRAINING } from '../js/config.js';
+import { EMPTY_INPUT, platformsAt } from '../js/fighter.js';
 import { createMatch, targetOf } from '../js/game.js';
 import { botLevel, createBot } from '../js/bot.js';
 import {
@@ -230,17 +230,52 @@ test('walking off a platform edge falls to the floor', () => {
 });
 
 test('the top platform is reachable from a side platform, not from the floor', () => {
+  // From the floor, even right under the moving platform's whole range.
   const fromFloor = fightAt(-8, 0);
   run(fromFloor, 60, (t) => [{}, t === 0 ? { jump: true } : {}]);
   assert.equal(fromFloor.state.fighters[1].y, ARENA.groundY);
 
-  const m = fightAt(8, rightPlat.x0 + 0.1); // opponent on the right: fighter faces right
+  // From the right side platform: wait until the mover passes overhead, jump.
+  const m = fightAt(8, rightPlat.x0 + 0.6);
   run(m, 60, (t) => [{}, t === 0 ? { jump: true } : {}]);
   assert.equal(m.state.fighters[1].y, rightPlat.y);
-  run(m, 60, (t) => [{}, t === 0 ? { jump: true, left: true } : {}]);
+  const x = m.state.fighters[1].x;
+  let waited = 0;
+  while (waited++ < 600) {
+    const top = platformsAt(m.state.clock)[2];
+    if (x > top.x0 + 0.8 && x < top.x1 - 0.8) break;
+    run(m, 1, () => [{}, {}]);
+  }
+  run(m, 60, (t) => [{}, t === 0 ? { jump: true } : {}]);
+  assert.equal(m.state.fighters[1].y, topPlat.y);
+});
+
+test('the moving platform carries a fighter standing on it', () => {
+  const m = fightAt(-8, 8);
   const f = m.state.fighters[1];
-  assert.equal(f.y, topPlat.y);
-  assert.ok(f.x >= topPlat.x0 && f.x <= topPlat.x1);
+  const top = () => platformsAt(m.state.clock)[2];
+  Object.assign(f, { x: (top().x0 + top().x1) / 2, y: topPlat.y, grounded: true, vy: 0 });
+  const offset = f.x - top().x0;
+  run(m, 45, () => [{}, {}]);
+  assert.equal(f.y, topPlat.y, 'still on the platform');
+  assert.ok(Math.abs(f.x - top().x0 - offset) < 1e-6, 'moved exactly with it');
+});
+
+test('fighters walk under the side platforms', () => {
+  const m = fightAt(-8, rightPlat.x1 + 1);
+  run(m, 90, () => [{}, { left: true }]);
+  const f = m.state.fighters[1];
+  assert.equal(f.y, ARENA.groundY);
+  assert.ok(f.x < rightPlat.x0, 'walked all the way under');
+  // The drawn model's head tops out at ~2.17 (fighterView proportions + bob).
+  assert.ok(rightPlat.y - 0.28 > 2.2, 'slab clears a standing fighter head');
+});
+
+test('the platform clock survives the network round trip', () => {
+  const m = fightAt(-3, 3);
+  run(m, 100, () => [{}, {}]);
+  const auth = decodeAuthority(JSON.parse(JSON.stringify(encodeSnapshot(m.state, 5, [], 0, 1))));
+  assert.ok(Math.abs(auth.clock - m.state.clock) < 1e-3);
 });
 
 test('a fighter cannot throw someone standing on a different level', () => {
@@ -775,4 +810,60 @@ test('a fighter in combo-breaker guard cannot be hit, thrown or hit by a project
   const ev = hits(run(m, 30, (t) => [t === 0 ? { right: true, punch: true } : {}, {}]));
   assert.equal(ev.length, 0);
   assert.equal(m.state.fighters[1].hp, MATCH.maxHp);
+});
+
+// ---------------------------------------------------------------------------
+// Power-ups
+// ---------------------------------------------------------------------------
+
+test('a power-up appears on a platform after the first delay', () => {
+  const m = fightAt(-8, 8);
+  run(m, Math.ceil(PICKUPS.firstDelay / TICK) - 5, () => [{}, {}]);
+  assert.equal(m.state.pickup, null);
+  const ev = run(m, 10, () => [{}, {}]);
+  const p = m.state.pickup;
+  assert.ok(p && PICKUPS.kinds.includes(p.kind));
+  assert.ok(ev.some((e) => e.type === 'pickup-spawn'));
+  const plat = platformsAt(m.state.clock)[p.platform];
+  assert.ok(Math.abs(p.y - (plat.y + PICKUPS.hover)) < 1e-9 && p.x >= plat.x0 && p.x <= plat.x1);
+});
+
+test('touching a health crystal heals, a charge crystal refills the special', () => {
+  for (const kind of PICKUPS.kinds) {
+    const m = fightAt(-8, 8);
+    run(m, Math.ceil(PICKUPS.firstDelay / TICK) + 2, () => [{}, {}]);
+    const p = m.state.pickup;
+    p.kind = kind;
+    const f = m.state.fighters[0];
+    f.hp = 50;
+    f.cooldown = 2;
+    Object.assign(f, { x: p.x, y: p.y - PICKUPS.hover, grounded: true, vy: 0 });
+    const ev = run(m, 2, () => [{}, {}]);
+    assert.ok(ev.some((e) => e.type === 'pickup' && e.target === 0 && e.kind === kind));
+    assert.equal(m.state.pickup, null);
+    if (kind === 'health') assert.equal(f.hp, 50 + PICKUPS.heal);
+    else assert.equal(f.cooldown, 0);
+  }
+});
+
+test('an untouched power-up expires', () => {
+  const m = fightAt(-8, 8);
+  run(m, Math.ceil(PICKUPS.firstDelay / TICK) + 2, () => [{}, {}]);
+  assert.ok(m.state.pickup);
+  run(m, Math.ceil(PICKUPS.life / TICK) + 2, () => [{}, {}]);
+  assert.equal(m.state.pickup, null);
+});
+
+test('no power-ups in training; the crystal survives the network round trip', () => {
+  const t = trainingAt(-8, 8);
+  run(t, Math.ceil((PICKUPS.firstDelay + 1) / TICK), () => [{}, {}]);
+  assert.equal(t.state.pickup, null);
+
+  const m = fightAt(-8, 8);
+  run(m, Math.ceil(PICKUPS.firstDelay / TICK) + 2, () => [{}, {}]);
+  const interp = createInterpolator();
+  interp.push(JSON.parse(JSON.stringify(encodeSnapshot(m.state, 1, []))));
+  const got = interp.sample().state.pickup;
+  assert.equal(got.kind, m.state.pickup.kind);
+  assert.ok(Math.abs(got.x - m.state.pickup.x) < 1e-3);
 });

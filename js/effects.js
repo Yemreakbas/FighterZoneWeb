@@ -106,16 +106,14 @@ export function createEffects(scene) {
     const core = new THREE.Mesh(orbGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }));
     core.scale.setScalar(0.12);
     glow.scale.setScalar(0.26);
-    // The light stays in the scene at intensity 0 when unused: toggling a
-    // light's visibility changes the light count and forces a shader recompile.
-    const light = new THREE.PointLight(color, 0, 5);
-    group.add(glow, core, light);
+    // No point light per orb: up to four extra lights would cost every lit
+    // pixel on screen. The additive glow carries the effect.
+    group.add(glow, core);
     scene.add(group);
-    return { glow, core, light, group };
+    return { glow, core, group };
   });
   const showOrb = (o, on) => {
     o.glow.visible = o.core.visible = on;
-    o.light.intensity = on ? 8 : 0;
   };
   orbs.forEach((o) => showOrb(o, false));
   let orbTime = 0;
@@ -136,7 +134,6 @@ export function createEffects(scene) {
     const o = orbs[owner];
     if (!o) return;
     o.glow.material.color.setHex(color);
-    o.light.color.setHex(color);
   }
 
   // Fatality: the body bursts into tumbling pieces that bounce and settle.
@@ -188,6 +185,32 @@ export function createEffects(scene) {
     }
   }
 
+  // Power-up crystal: a spinning gem with an additive halo, green for
+  // health, blue for special charge.
+  const PICKUP_COLORS = { health: 0x4dff88, charge: 0x4db8ff };
+  const gemMat = new THREE.MeshBasicMaterial({ color: 0x4dff88 });
+  const haloMat = new THREE.MeshBasicMaterial({ color: 0x4dff88, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false });
+  const gem = new THREE.Group();
+  gem.add(new THREE.Mesh(new THREE.OctahedronGeometry(0.24, 0), gemMat));
+  const halo = new THREE.Mesh(new THREE.SphereGeometry(0.42, 16, 12), haloMat);
+  gem.add(halo);
+  gem.visible = false;
+  scene.add(gem);
+  let gemTime = 0;
+
+  /** Mirror the simulation's pickup ({ kind, x, y } or null). */
+  function syncPickup(p, dt) {
+    gem.visible = !!p;
+    if (!p) return;
+    gemTime += dt;
+    const color = PICKUP_COLORS[p.kind] ?? PICKUP_COLORS.health;
+    gemMat.color.setHex(color);
+    haloMat.color.setHex(color);
+    gem.position.set(p.x, p.y + Math.sin(gemTime * 3) * 0.08, 0);
+    gem.rotation.y = gemTime * 2.2;
+    halo.scale.setScalar(1 + Math.sin(gemTime * 6) * 0.1);
+  }
+
   /** Remove leftover pieces (new round / leaving the match). */
   function clearPieces() {
     for (const p of pieces) p.mesh.visible = false;
@@ -199,6 +222,7 @@ export function createEffects(scene) {
     dust: dustBurst,
     update(dt) { update(dt); updateDust(dt); updatePieces(dt); },
     syncProjectiles,
+    syncPickup,
     setProjectileColor,
     explode,
     clearPieces,

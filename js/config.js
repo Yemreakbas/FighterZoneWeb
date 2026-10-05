@@ -5,15 +5,19 @@ export const ARENA = {
   halfWidth: 9,       // fighters are clamped to [-halfWidth, halfWidth] on X
   groundY: 0,
   /**
-   * One-way platforms { x0, x1, y }: jump up through them from below, land on
-   * them from above, drop through with down + jump. A jump peaks at about
-   * jumpVelocity^2 / (2 * |gravity|) = 1.84, so the side platforms are
-   * reachable from the floor and the top one from a side platform.
+   * One-way platforms { x0, x1, y, move? }: jump up through them from below,
+   * land on them from above, drop through with down + jump. Side platforms
+   * sit high enough that the slab's underside (y - 0.28) clears the drawn
+   * fighter's head (about 2.17 with idle/walk bob, see fighterView), so
+   * fighters walk under them. A jump peaks at
+   * jumpVelocity^2 / (2 * |gravity|) = 2.82, so the side platforms are
+   * reachable from the floor and the top one only from a side platform. `move` slides a platform along X:
+   * offset = amp * sin(2 * PI * clock / period); riders are carried along.
    */
   platforms: [
-    { x0: -6.4, x1: -3.0, y: 1.5 },
-    { x0: 3.0, x1: 6.4, y: 1.5 },
-    { x0: -2.2, x1: 2.2, y: 3.0 },
+    { x0: -6.6, x1: -3.2, y: 2.55 },
+    { x0: 3.2, x1: 6.6, y: 2.55 },
+    { x0: -1.8, x1: 1.8, y: 4.9, move: { amp: 3.4, period: 9 } },
   ],
   dropThrough: 0.25,  // seconds a dropping fighter ignores platforms
 };
@@ -41,7 +45,7 @@ export const PHYSICS = {
   gravity: -30,
   walkSpeed: 4.2,
   backWalkFactor: 0.75, // walking away from the opponent is slower
-  jumpVelocity: 10.5,
+  jumpVelocity: 13,
   jumpForwardSpeed: 4,
   knockbackDecay: 8,    // per-second exponential decay of knockback velocity
   minSeparation: 0.8,   // fighters cannot overlap closer than this on X
@@ -151,6 +155,18 @@ export const ARENAS = [
     pillar: 0x8a6a45, banners: [0x8a1c1c, 0xd4a017],
   },
 ];
+
+/**
+ * Power-up crystals that appear on a random platform during a fight (not in
+ * training): 'health' heals, 'charge' refills the special move. One at a
+ * time; it hovers `hover` above the platform (riding a moving one) and
+ * vanishes after `life` seconds if nobody touches it.
+ */
+export const PICKUPS = {
+  kinds: ['health', 'charge'],
+  firstDelay: 12, interval: 18, life: 10,
+  heal: 25, hover: 0.7, radius: 0.35,
+};
 
 // Training mode: a fighter's health refills once it has taken no damage
 // for this long (and instantly if it would be knocked out).

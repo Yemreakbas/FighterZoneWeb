@@ -14,6 +14,8 @@ export function showScreen(name) {
   // Result, pause and help are drawn over the HUD so the fight stays visible.
   const overFight = name === null || name === 'result' || name === 'pause' || (name === 'help' && helpOverFight);
   $('hud').classList.toggle('hidden', !overFight);
+  // The bare fight (no menu on top) is the only landscape-only screen.
+  document.body.classList.toggle('in-fight', name === null);
 }
 
 export function showResult(title, detail, canRematch) {

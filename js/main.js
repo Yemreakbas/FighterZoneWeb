@@ -82,7 +82,9 @@ function createLocalSession(chars, gatherInputs, onTick, matchOptions = {}) {
     });
     const out = events;
     events = [];
-    return { state: match.state, events: out, positions };
+    // Platform clock blended like positions (it advances one TICK per step).
+    const clock = Math.max(0, match.state.clock - (1 - alpha) * TICK);
+    return { state: match.state, events: out, positions, clock };
   }
 
   return {
@@ -610,7 +612,9 @@ function playerInput() {
 function pause() {
   if (!session || paused || hud.last.phase === 'over') return;
   paused = true;
-  ui.showPause(session.pausable ? '' : 'Online maç durdurulamaz, oyun arka planda sürüyor.');
+  const note = !session.pausable ? 'Online maç durdurulamaz, oyun arka planda sürüyor.'
+    : portraitPhone.matches ? 'Devam etmek için telefonu yan çevir.' : '';
+  ui.showPause(note);
 }
 
 function resume() {
@@ -720,6 +724,10 @@ function handleEvents(events) {
       if (side === 0 || side === 1) ui.showCombo(side, Number(e.count) | 0);
     } else if (e.type === 'fireball') {
       sound.play('fireball');
+    } else if (e.type === 'pickup') {
+      sound.play('pickup');
+      effects.spark(num(e.x), num(e.y), { blocked: e.kind === 'charge' });
+      if (e.target === session?.localIndex) ui.showHint(e.kind === 'health' ? '+25 CAN' : 'ÖZEL HAZIR!', 1200);
     } else if (e.type === 'ko') {
       sound.play('ko');
       // A fighter dropping in 2v2 (has a target) is a smaller moment than a round K.O.
@@ -874,15 +882,20 @@ function frame(now) {
   // Gamepad is polled every frame, even while paused, so Start can resume.
   if (keyboard.poll() && session) (paused ? resume() : pause());
 
+  // Solo play never runs upright on a phone (the rotate prompt covers it).
+  if (session?.pausable && !paused && portraitPhone.matches) pause();
+
   if (session && !(paused && session.pausable)) {
-    const { state, events, positions } = session.update(dt);
+    const { state, events, positions, clock } = session.update(dt);
     if (state) {
+      stage.updatePlatforms(clock ?? state.clock ?? 0);
       const chars = state.chars || [0, 1];
       applyCharacterColors(chars, state.teams || defaultTeams(chars.length), session.localIndex ?? 0);
       stage.setArena(state.arena ?? 0);
       state.fighters.forEach((f, i) => views[i]?.update(f, dt, positions[i].x, positions[i].y));
       stage.updateCamera(dt, positions);
       effects.syncProjectiles(state.projectiles || [], dt);
+      effects.syncPickup(state.pickup ?? null, dt);
       hud.sync(state);
       handleEvents(events);
     }
@@ -890,13 +903,17 @@ function frame(now) {
     applyCharacterColors([0, 1], [0, 1], -1);
     stage.setArena(0);
     effects.syncProjectiles([], dt);
+    effects.syncPickup(null, dt);
     // Attract mode: idle fighters and a slow camera sway behind the menu.
     menuFighters.forEach((f, i) => views[i].update(f, dt, f.x, f.y));
+    stage.updatePlatforms(now / 1000);
     const sway = Math.sin(now / 1000 * 0.3) * 3;
     stage.updateCamera(dt, [{ x: sway - 1.6, y: 0 }, { x: sway + 1.6, y: 0 }]);
   }
 
   effects.update(dt);
+  stage.animate(now / 1000);
+  stage.reportFrame(dt);
   stage.render();
 }
 requestAnimationFrame(frame);

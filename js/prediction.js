@@ -1,5 +1,5 @@
 import { TICK } from './config.js';
-import { bufferPress, separate, stepFighter } from './fighter.js';
+import { bufferPress, platformsAt, separate, setPlatforms, stepFighter } from './fighter.js';
 import { targetOf } from './game.js';
 
 // Client-side prediction for the local fighter in online play.
@@ -29,6 +29,7 @@ export function createPredictor() {
   let others = [];           // latest authoritative fighters (ours replaced by `me`)
   let teams = [0, 1];
   let hitstop = 0;
+  let clock = 0;             // host match clock, advanced like the host's
   let live = false;          // host only applies inputs during the fight phase
   const offset = { x: 0, y: 0 };
 
@@ -40,6 +41,9 @@ export function createPredictor() {
       bufferPress(me, input);
       return;
     }
+    const before = platformsAt(clock);
+    clock += TICK;
+    setPlatforms(before, platformsAt(clock));
     const fighters = others.map((f, i) => (i === index ? me : f));
     stepFighter(me, input, fighters[targetOf(fighters, teams, index)], TICK);
     // The host separates every pair of opponents; push against throwaway
@@ -72,6 +76,7 @@ export function createPredictor() {
       others = auth.fighters;
       teams = auth.teams;
       hitstop = auth.hitstop;
+      clock = auth.clock;
       me = { ...auth.me, buffer: auth.me.buffer && { ...auth.me.buffer } };
       for (const p of pending) advance(p.input);
 

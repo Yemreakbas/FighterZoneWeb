@@ -63,9 +63,30 @@ Bir dövüşçü sersemken üst üste en fazla **2 vuruş** yiyebilir. İkinci v
 - Yerdeki halkanın rengi takımı, başının üstündeki sarı ok seni gösterir.
 - FINISH HIM / FATALITY sadece 1v1'de var.
 
-## Platformlar
+## Platformlar ve arena
 
-Her arenada üç tek yönlü platform var: iki yanda alçak (1,5 m), ortada asılı yüksek bir platform (3 m). Alttan **zıplayarak** (W) içinden geçip üstüne çıkılır, **aşağı + zıpla** ile aşağı inilir, kenardan yürüyerek de düşülür. Ortadaki platforma yerden ulaşılamaz, önce yan platforma çıkman gerekir. Fırlatma sadece aynı seviyedeki rakibe yapılır. Botlar da rakiplerinin peşinden platformlara çıkar ve iner.
+Her arenada üç tek yönlü platform var:
+- İki yanda **2,2 m**'de sabit platform. Dövüşçü boyunun üstünde oldukları için altlarından rahatça yürünür.
+- Ortada **4,3 m**'de zincirle asılı, sağa sola gidip gelen **hareketli platform**. Üstündeki dövüşçüyü de beraberinde taşır. Yerden ulaşılmaz; yan platformun üstünden geçerken zıplayarak binilir.
+
+Alttan **zıplayarak** (W) içinden geçip üstüne çıkılır, **aşağı + zıpla** (dokunmatikte ▼▼) ile inilir, kenardan yürüyerek düşülür. Fırlatma sadece aynı seviyedeki rakibe yapılır. Botlar da platformlara çıkıp iner. Hareketli platformun konumu maç saatinden hesaplanır, online maçta host ve istemci aynı yeri görür.
+
+Arka planda sütunlar ve titreyen meşaleler, sınırlarda sandıklar ve fıçılar, yerde arena amblemi var. Hepsi ekstra ışık kullanmadan çizilir.
+
+## Güçlendirme kristalleri
+
+Maç sırasında (antrenmanda değil) rastgele bir platformun üstünde dönen bir kristal belirir: ilki 12. saniyede, sonra her 18 saniyede bir. Hareketli platformdaki kristal platformla birlikte gider.
+
+- **Yeşil kristal:** +25 can.
+- **Mavi kristal:** özel hareketin bekleme süresini sıfırlar.
+
+Dokunan alır. 10 saniye içinde kimse almazsa kaybolur. Botlar canları azken ya da özel hareketleri dolarken, yakınlarında rakip yoksa kristale gider. Online maçta kristali host belirler, herkes aynısını görür.
+
+## Performans
+
+- Telefonlarda orta kalite ile başlar: piksel oranı en fazla 1,5, MSAA kapalı, daha ucuz gölge filtresi.
+- Kare süresi 2 saniye boyunca ortalama 25 ms'yi aşarsa kalite kendiliğinden bir kademe düşer (en düşükte gölge kapanır).
+- Enerji toplarının nokta ışıkları kaldırıldı, dövüşçüler gölge alma hesabı yapmaz, sabit dekor her karede matris güncellemez.
 
 ## Özel hareket bekleme süresi
 

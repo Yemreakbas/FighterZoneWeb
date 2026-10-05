@@ -1,4 +1,4 @@
-import { ARENAS, CHARACTERS, NET, TICK } from './config.js';
+import { ARENAS, CHARACTERS, NET, PICKUPS, TICK } from './config.js';
 import { defaultTeams } from './game.js';
 
 // State packets (host -> client) and client-side interpolation.
@@ -105,6 +105,7 @@ export function encodeSnapshot(state, tick, events, ack = 0, meIndex = 1) {
     me: encodeFull(state.fighters[meIndex]),
     s: {
       hs: r3(state.hitstop || 0),
+      ck: r3(state.clock || 0),
       n: state.names,
       ch: state.chars,
       tg: state.teams,
@@ -120,6 +121,7 @@ export function encodeSnapshot(state, tick, events, ack = 0, meIndex = 1) {
         a: f.action, t: r3(f.t), c: f.crouch ? 1 : 0, g: f.grounded ? 1 : 0, cd: r3(f.cooldown), gd: r3(f.guard),
       })),
       pr: state.projectiles.map((p) => ({ o: p.owner, x: r3(p.x), y: r3(p.y), d: Math.sign(p.vx) })),
+      pk: state.pickup ? [PICKUPS.kinds.indexOf(state.pickup.kind), r3(state.pickup.x), r3(state.pickup.y)] : 0,
     },
     e: events.map((e) => (e.type === 'hit' ? { ...e, x: r3(e.x), y: r3(e.y) } : e)),
   };
@@ -147,6 +149,7 @@ export function decodeAuthority(msg) {
     ack: Math.max(0, Math.floor(num(msg.a))),
     phase: state.phase,
     hitstop: Math.max(0, num(msg.s.hs)),
+    clock: state.clock,
     me,
     index,
     fighters: state.fighters,
@@ -161,6 +164,9 @@ function decodeState(s) {
   const list = (v, fallback, map) => (Array.isArray(v) && v.length === n ? v.map(map) : fallback);
   const teams = list(s.tg, defaultTeams(n), (t) => (t === 1 ? 1 : 0));
   return {
+    clock: Math.max(0, num(s.ck)),
+    pickup: Array.isArray(s.pk) && PICKUPS.kinds[s.pk[0]]
+      ? { kind: PICKUPS.kinds[s.pk[0]], x: num(s.pk[1]), y: num(s.pk[2]) } : null,
     names: list(s.n, s.f.map((_, i) => `P${i + 1}`), (x) => String(x).slice(0, 16)),
     chars: list(s.ch, s.f.map((_, i) => i % CHARACTERS.length), validChar),
     teams,
@@ -267,7 +273,8 @@ export function createInterpolator() {
       const q = from.state.projectiles.find((o) => o.owner === p.owner);
       return q ? { ...p, x: q.x + (p.x - q.x) * alpha } : p;
     });
-    const state = { ...to.state, fighters, projectiles };
+    const clock = from.state.clock + (to.state.clock - from.state.clock) * alpha;
+    const state = { ...to.state, fighters, projectiles, clock };
 
     const events = [];
     pending = pending.filter((p) => {

@@ -20,7 +20,6 @@ export function createFighterView(scene, color) {
     const m = new THREE.Mesh(geo, mat);
     m.position.set(x, y, z);
     m.castShadow = true;
-    m.receiveShadow = true;
     return m;
   };
   const group = (parent, x = 0, y = 0, z = 0) => {
@@ -79,10 +78,12 @@ export function createFighterView(scene, color) {
   ring.position.y = 0.03;
   ring.visible = false;
   root.add(ring);
+  // Drawn on top of everything so it never disappears into a platform.
   const arrow = new THREE.Mesh(
     new THREE.ConeGeometry(0.13, 0.26, 4),
-    new THREE.MeshBasicMaterial({ color: 0xffd23f }),
+    new THREE.MeshBasicMaterial({ color: 0xffd23f, depthTest: false }),
   );
+  arrow.renderOrder = 10;
   arrow.rotation.x = Math.PI; // point down
   arrow.position.y = 2.35;
   arrow.visible = false;

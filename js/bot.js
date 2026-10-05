@@ -1,5 +1,5 @@
-import { ARENA, ATTACKS, BOT_DIFFICULTIES, BOT_LEVELS, DEFAULT_DIFFICULTY } from './config.js';
-import { EMPTY_INPUT, isAttacking, isSweep } from './fighter.js';
+import { ATTACKS, BOT_DIFFICULTIES, BOT_LEVELS, DEFAULT_DIFFICULTY, PICKUPS } from './config.js';
+import { EMPTY_INPUT, isAttacking, isSweep, platformsAt } from './fighter.js';
 import { defaultTeams, targetOf } from './game.js';
 
 // AI opponent. Produces the same input shape as a human player, so it plugs
@@ -12,16 +12,16 @@ const THROW_RANGE = ATTACKS.throw.reach - 0.1;
 // Intents the bot holds until `intentUntil` instead of re-deciding.
 const DEFENCES = new Set(['block', 'lowblock', 'crouch']);
 
-// A jump clears about 1.84 units; platforms within this rise can be climbed.
-const MAX_CLIMB = 1.7;
+// A jump clears about 2.82 units; platforms within this rise can be climbed.
+const MAX_CLIMB = 2.65;
 
 /**
  * Where to stand to follow `opp` onto a higher platform: under the next
  * platform reachable from `me`'s level, preferring the one the opponent is
  * on. Returns an x to jump straight up from, or null if none is reachable.
  */
-function climbSpot(me, opp) {
-  const reachable = ARENA.platforms.filter((p) => p.y > me.y + 0.3 && p.y <= me.y + MAX_CLIMB);
+function climbSpot(me, opp, clock) {
+  const reachable = platformsAt(clock).filter((p) => p.y > me.y + 0.3 && p.y <= me.y + MAX_CLIMB);
   if (!reachable.length) return null;
   const centre = (p) => (p.x0 + p.x1) / 2;
   const p = reachable.find((q) => opp.x >= q.x0 && opp.x <= q.x1)
@@ -157,11 +157,25 @@ export function createBot(index, difficulty = DEFAULT_DIFFICULTY) {
       }
     }
 
-    // Opponent on another level: climb up after them or drop down to them.
-    if (me.grounded && opp.grounded && !(DEFENCES.has(intent) && time < intentUntil)) {
-      const dy = opp.y - me.y;
+    // Where to go: a power-up worth having when no enemy is in our face,
+    // otherwise the opponent. A crystal is treated as standing on its platform.
+    const pk = state.pickup;
+    const wantPickup = pk && dist > KICK_RANGE + 1
+      && (pk.kind === 'health' ? me.hp < 75 : me.cooldown > 1);
+    const goal = wantPickup ? { x: pk.x, y: pk.y - PICKUPS.hover, grounded: true } : opp;
+    if (wantPickup && Math.abs(goal.y - me.y) < 0.5 && me.grounded && !(DEFENCES.has(intent) && time < intentUntil)) {
+      queued = [];
+      if (Math.abs(goal.x - me.x) > 0.2) input[goal.x > me.x ? 'right' : 'left'] = true;
+      return input;
+    }
+
+    // Goal on another level: climb up after it or drop down to it.
+    if (me.grounded && goal.grounded && !(DEFENCES.has(intent) && time < intentUntil)) {
+      const dy = goal.y - me.y;
+      const goalDist = Math.abs(goal.x - me.x);
+      const goalToward = Math.sign(goal.x - me.x) || me.facing;
       if (dy > 0.5) {
-        const spot = climbSpot(me, opp);
+        const spot = climbSpot(me, goal, state.clock || 0);
         if (spot !== null) {
           queued = [];
           if (Math.abs(spot - me.x) > 0.25) input[spot > me.x ? 'right' : 'left'] = true;
@@ -173,12 +187,12 @@ export function createBot(index, difficulty = DEFAULT_DIFFICULTY) {
         }
       } else if (dy < -0.5) {
         queued = [];
-        if (dist < 2.5 && time >= nextDecision) {
+        if (goalDist < 2.5 && time >= nextDecision) {
           input.down = true;
           input.jump = true;
           nextDecision = time + lvl.reaction;
         } else {
-          input[toward > 0 ? 'right' : 'left'] = true;
+          input[goalToward > 0 ? 'right' : 'left'] = true;
         }
         return input;
       }

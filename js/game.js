@@ -1,7 +1,7 @@
-import { ARENA, HITSTOP, MATCH, ROUND_FLOW, TRAINING } from './config.js';
+import { ARENA, HITSTOP, MATCH, PICKUPS, ROUND_FLOW, TRAINING } from './config.js';
 import {
-  EMPTY_INPUT, applyContact, applyThrow, bufferPress, createFighter, findHit, findThrow, hurtbox, isKnockedDown, overlaps, projectileBox,
-  projectileHit, separate, spawnProjectile, stepFighter,
+  EMPTY_INPUT, applyContact, applyThrow, bufferPress, createFighter, findHit, findThrow, hurtbox, isKnockedDown, overlaps,
+  platformsAt, projectileBox, projectileHit, separate, setPlatforms, spawnProjectile, stepFighter,
 } from './fighter.js';
 
 // Authoritative match simulation: rounds, timer, combat resolution.
@@ -70,6 +70,8 @@ export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1], ar
     fighters: [],
     projectiles: [],
     hitstop: 0,      // seconds of impact freeze remaining
+    clock: 0,        // match time driving the moving platforms (frozen in hit-stop)
+    pickup: null,    // { kind, platform, x, y, life } power-up crystal on screen
   };
   let events = [];
 
@@ -91,6 +93,52 @@ export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1], ar
     if (combo[attacker] >= 2) emit({ type: 'combo', attacker, team: teams[attacker], count: combo[attacker] });
   }
 
+  // Power-ups: a seeded generator keeps the host's choices reproducible
+  // (tests), clients only ever render the state they are sent.
+  let seed = 0x9e3779b9 ^ (arena * 7919);
+  const rand = () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  let pickupTimer = PICKUPS.firstDelay;
+
+  /** Spawn, carry, collect or expire the power-up crystal (live fight only). */
+  function stepPickup(dt) {
+    const p = state.pickup;
+    if (!p) {
+      pickupTimer -= dt;
+      if (pickupTimer > 0) return;
+      const platform = Math.floor(rand() * ARENA.platforms.length);
+      const kind = PICKUPS.kinds[Math.floor(rand() * PICKUPS.kinds.length)];
+      state.pickup = { kind, platform, x: 0, y: 0, life: PICKUPS.life };
+      placePickup(state.pickup);
+      emit({ type: 'pickup-spawn', kind, x: state.pickup.x, y: state.pickup.y });
+      return;
+    }
+    placePickup(p);
+    p.life -= dt;
+    const r = PICKUPS.radius;
+    const box = { x0: p.x - r, x1: p.x + r, y0: p.y - r, y1: p.y + r };
+    const taker = state.fighters.findIndex((f) => isUp(f) && overlaps(box, hurtbox(f)));
+    if (taker >= 0) {
+      const f = state.fighters[taker];
+      if (p.kind === 'health') f.hp = Math.min(MATCH.maxHp, f.hp + PICKUPS.heal);
+      else f.cooldown = 0;
+      emit({ type: 'pickup', kind: p.kind, target: taker, x: p.x, y: p.y });
+    }
+    if (taker >= 0 || p.life <= 0) {
+      state.pickup = null;
+      pickupTimer = PICKUPS.interval;
+    }
+  }
+
+  /** Hover over the centre of its platform (which may be moving). */
+  function placePickup(p) {
+    const plat = platformsAt(state.clock)[p.platform];
+    p.x = (plat.x0 + plat.x1) / 2;
+    p.y = plat.y + PICKUPS.hover;
+  }
+
   function resetRound() {
     // Each team lines up on its own side, first member nearest the centre.
     const slot = [0, 0];
@@ -100,6 +148,8 @@ export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1], ar
       return createFighter(x, -side, c);
     });
     state.projectiles = [];
+    state.pickup = null;
+    pickupTimer = PICKUPS.firstDelay;
     combo = chars.map(() => 0);
     state.timer = MATCH.roundTime;
     state.phase = 'intro';
@@ -132,6 +182,7 @@ export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1], ar
   }
 
   function endRound(winner, text) {
+    state.pickup = null;
     state.phase = 'roundEnd';
     state.phaseT = 0;
     state.roundWinner = winner;
@@ -154,6 +205,7 @@ export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1], ar
     state.phase = 'finish';
     state.phaseT = 0;
     state.projectiles = [];
+    state.pickup = null;
     emit({ type: 'finish', winner });
     emit({ type: 'announce', text: 'FINISH HIM!', ms: 2500, style: 'blood' });
   }
@@ -185,6 +237,9 @@ export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1], ar
 
     const prevPhaseT = state.phaseT;
     state.phaseT += dt;
+    const platformsBefore = platformsAt(state.clock);
+    state.clock += dt;
+    setPlatforms(platformsBefore, platformsAt(state.clock));
 
     // Players control their fighters during the fight; in the finish window
     // only the winner moves.
@@ -249,6 +304,7 @@ export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1], ar
         trainingRefill(dt);
         return;
       }
+      stepPickup(dt);
 
       state.timer = Math.max(0, state.timer - dt);
       if (duel) checkDuelEnd();

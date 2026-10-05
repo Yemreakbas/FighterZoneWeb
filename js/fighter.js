@@ -191,6 +191,12 @@ function integrate(f, dt) {
     f.vx *= Math.exp(-PHYSICS.knockbackDecay * dt);
   }
 
+  // Riding a moving platform: carried by its motion this tick.
+  if (f.grounded && f.y > ARENA.groundY) {
+    const i = platformsBefore.findIndex((p) => onSurface(p, f.x, f.y));
+    if (i >= 0) f.x += platformsNow[i].x0 - platformsBefore[i].x0;
+  }
+
   // Walking off a platform's edge starts a fall.
   if (f.grounded && f.y > ARENA.groundY && !platformAt(f.x, f.y)) {
     f.grounded = false;
@@ -229,9 +235,30 @@ function integrate(f, dt) {
   f.x = Math.max(-ARENA.halfWidth, Math.min(ARENA.halfWidth, f.x));
 }
 
+/** Platform layout at match time `clock` (seconds): movers slide along X. */
+export function platformsAt(clock) {
+  return ARENA.platforms.map((p) => {
+    const dx = p.move ? p.move.amp * Math.sin((2 * Math.PI * clock) / p.move.period) : 0;
+    return { x0: p.x0 + dx, x1: p.x1 + dx, y: p.y };
+  });
+}
+
+// Platform positions at the start and end of the tick being simulated. The
+// match (and client prediction) sets them before stepping fighters.
+let platformsBefore = platformsAt(0);
+let platformsNow = platformsBefore;
+
+/** Advance the shared platform layout from `before` to `now` for this tick. */
+export function setPlatforms(before, now) {
+  platformsBefore = before;
+  platformsNow = now;
+}
+
+const onSurface = (p, x, y) => x >= p.x0 && x <= p.x1 && Math.abs(p.y - y) < 1e-6;
+
 /** The platform whose surface is at height `y` under `x`, if any. */
 function platformAt(x, y) {
-  return ARENA.platforms.find((p) => x >= p.x0 && x <= p.x1 && Math.abs(p.y - y) < 1e-6);
+  return platformsNow.find((p) => onSurface(p, x, y));
 }
 
 /**
@@ -242,7 +269,7 @@ function platformAt(x, y) {
 function landingHeight(f, prevY) {
   let floor = ARENA.groundY;
   if (f.vy > 0 || f.drop > 0) return floor;
-  for (const p of ARENA.platforms) {
+  for (const p of platformsNow) {
     if (p.y > floor && f.x >= p.x0 && f.x <= p.x1 && prevY >= p.y - 1e-6) floor = p.y;
   }
   return floor;

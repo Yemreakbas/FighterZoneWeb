@@ -473,10 +473,10 @@ kbd {
 .touch-only { display: none; }
 @media (pointer: coarse) { .touch-only { display: block; } }
 
-/* Portrait phone: ask to rotate. Shown above everything, dismissed by rotating. */
+/* Portrait phone mid-fight: ask to rotate (menus work upright). Dismissed by rotating. */
 #rotate { display: none; }
 @media (pointer: coarse) and (orientation: portrait) and (max-width: 600px) {
-  #rotate {
+  body.in-fight #rotate {
     position: fixed;
     inset: 0;
     z-index: 50;
