@@ -73,6 +73,7 @@ export function createStage(container) {
   const camTarget = new THREE.Vector3(0, 1.4, 0);
   const camBase = camera.position.clone();
   let shakeAmt = 0;
+  let zoomKick = 0; // metres pushed toward the action, decays back to 0
 
   /**
    * Side-view tracking: centre on the midpoint between the fighters and
@@ -91,6 +92,10 @@ export function createStage(container) {
 
     // Shake is applied on top of the smoothed base so it never accumulates.
     camera.position.copy(camBase);
+    if (zoomKick > 0.002) {
+      camera.position.z -= zoomKick;
+      zoomKick *= Math.exp(-6 * dt);
+    }
     if (shakeAmt > 0.002) {
       camera.position.x += (Math.random() - 0.5) * shakeAmt;
       camera.position.y += (Math.random() - 0.5) * shakeAmt;
@@ -106,6 +111,8 @@ export function createStage(container) {
     updateCamera,
     setArena,
     shake: (amount) => { shakeAmt = Math.max(shakeAmt, amount); },
+    /** Brief push-in toward the fighters for big impacts. */
+    punchZoom: (amount) => { zoomKick = Math.max(zoomKick, amount); },
     render: () => renderer.render(scene, camera),
   };
 }

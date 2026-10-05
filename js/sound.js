@@ -71,6 +71,17 @@ const SOUNDS = {
     noise(0.14, 1600, 0.7);
     tone(130, 40, 0.2, 0.9);
   },
+  grab() {
+    // Cloth whoosh rising into the toss.
+    noise(0.22, 1200, 0.45, 'bandpass');
+    tone(140, 260, 0.18, 0.3, 'triangle');
+  },
+  slam() {
+    // Body hitting the floor: low boom, a dull thud, then a short rattle.
+    tone(90, 32, 0.45, 1);
+    noise(0.18, 400, 0.9);
+    noise(0.12, 2200, 0.2, 'highpass', 0.06);
+  },
   block() {
     noise(0.05, 3000, 0.25, 'highpass');
     tone(950, 700, 0.05, 0.12, 'square');

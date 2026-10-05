@@ -506,14 +506,17 @@ function handleEvents(events) {
       }
       else if (text === 'FIGHT!') sound.play('fight');
     } else if (e.type === 'hit') {
-      sound.play(e.blocked ? 'block' : e.heavy ? 'heavy' : 'hit');
+      sound.play(e.throw ? 'grab' : e.blocked ? 'block' : e.heavy ? 'heavy' : 'hit');
       effects.spark(num(e.x), num(e.y), { blocked: !!e.blocked, heavy: !!e.heavy });
       if (!e.blocked) views[e.target]?.flash();
       stage.shake(e.blocked ? 0.06 : e.heavy ? 0.28 : 0.14);
+      if (e.throw) stage.punchZoom(0.6);
     } else if (e.type === 'slam') {
-      sound.play('heavy');
+      sound.play('slam');
       effects.spark(num(e.x), 0.15, { heavy: true });
-      stage.shake(0.35);
+      effects.dust(num(e.x), 1.2);
+      stage.shake(0.45);
+      stage.punchZoom(0.9);
     } else if (e.type === 'damage') {
       if (e.target === 1) ui.setTrainingInfo(`HASAR ${Number(e.total) | 0}`);
     } else if (e.type === 'combo') {
@@ -523,6 +526,7 @@ function handleEvents(events) {
     } else if (e.type === 'ko') {
       sound.play('ko');
       stage.shake(0.5);
+      stage.punchZoom(1.2);
     } else if (e.type === 'over') {
       sound.play('victory');
     } else if (e.type === 'finish') {
@@ -533,6 +537,8 @@ function handleEvents(events) {
       stage.shake(0.8);
       const target = e.target === 0 || e.target === 1 ? e.target : 1;
       effects.explode(num(e.x), num(e.y), shownColors[target]);
+      effects.dust(num(e.x), 1.6);
+      stage.punchZoom(1.5);
     }
   }
 }

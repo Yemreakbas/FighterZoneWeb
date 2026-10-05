@@ -50,6 +50,50 @@ export function createEffects(scene) {
     flashLight.intensity *= Math.exp(-25 * dt);
   }
 
+  // Dust: a ring of puffs that roll outward along the floor and fade.
+  const DUST_COUNT = 14;
+  const DUST_LIFE = 0.7;
+  const dustGeo = new THREE.SphereGeometry(1, 8, 6);
+  const dust = Array.from({ length: DUST_COUNT }, () => {
+    const mesh = new THREE.Mesh(dustGeo, new THREE.MeshBasicMaterial({
+      color: 0xc8b49a, transparent: true, depthWrite: false,
+    }));
+    mesh.visible = false;
+    scene.add(mesh);
+    return { mesh, vx: 0, vz: 0, vy: 0, age: DUST_LIFE, size: 0.2 };
+  });
+
+  /** Floor impact at `x`; `strength` scales spread and puff size. */
+  function dustBurst(x, strength = 1) {
+      const side = i % 2 === 0 ? 1 : -1;
+      d.age = 0;
+      d.size = (0.14 + Math.random() * 0.14) * strength;
+      d.vx = side * (1.5 + Math.random() * 3) * strength;
+      d.vz = (Math.random() - 0.5) * 2;
+      d.vy = 0.4 + Math.random() * 1.2;
+      d.mesh.position.set(x + side * Math.random() * 0.3, 0.08, (Math.random() - 0.5) * 0.4);
+      d.mesh.visible = true;
+    });
+  }
+
+  function updateDust(dt) {
+    for (const d of dust) {
+      if (!d.mesh.visible) continue;
+      d.age += dt;
+      const k = d.age / DUST_LIFE;
+      if (k >= 1) { d.mesh.visible = false; continue; }
+      const drag = Math.exp(-4 * dt);
+      d.vx *= drag;
+      d.vz *= drag;
+      d.vy *= drag;
+      d.mesh.position.x += d.vx * dt;
+      d.mesh.position.y += d.vy * dt;
+      d.mesh.position.z += d.vz * dt;
+      d.mesh.scale.set(d.size * (1 + k * 2.5), d.size * (0.6 + k * 1.2), d.size * (1 + k * 2.5));
+      d.mesh.material.opacity = 0.55 * (1 - k);
+    }
+  }
+
   // Projectiles: up to one per fighter, coloured by owner.
   const ORB_COLORS = [0xff5a3a, 0x3aa8ff];
   const orbGeo = new THREE.SphereGeometry(1, 16, 12);
@@ -146,11 +190,13 @@ export function createEffects(scene) {
   /** Remove leftover pieces (new round / leaving the match). */
   function clearPieces() {
     for (const p of pieces) p.mesh.visible = false;
+    for (const d of dust) d.mesh.visible = false;
   }
 
   return {
     spark,
-    update(dt) { update(dt); updatePieces(dt); },
+    dust: dustBurst,
+    update(dt) { update(dt); updateDust(dt); updatePieces(dt); },
     syncProjectiles,
     setProjectileColor,
     explode,
