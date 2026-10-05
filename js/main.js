@@ -932,6 +932,7 @@ function applyCharacterColors(chars, teams, local) {
     else if (copy === 3) color = lighten(color, 0.45);
     else if (copy === 4) color = scale(color, 0.28);
     views[i].setColor(color);
+    views[i].setCharacter((CHARACTERS[c] || CHARACTERS[0]).id);
     views[i].setMarker(teamFight ? TEAM_COLORS[teams[i]] : null, teamFight && i === local);
     shownColors[i] = color;
     effects.setProjectileColor(i, color);
@@ -983,6 +984,7 @@ prewarmShaders();
 // tab returning to focus does not produce one giant simulation burst.
 // ---------------------------------------------------------------------------
 let last = performance.now();
+const wasAirborne = views.map(() => false);
 
 function frame(now) {
   // Schedule first: an exception below must not kill the game loop.
@@ -1003,7 +1005,12 @@ function frame(now) {
       const chars = state.chars || [0, 1];
       applyCharacterColors(chars, state.teams || defaultTeams(chars.length), session.localIndex ?? 0);
       stage.setArena(state.arena ?? 0);
-      state.fighters.forEach((f, i) => views[i]?.update(f, dt, positions[i].x, positions[i].y));
+      state.fighters.forEach((f, i) => {
+        views[i]?.update(f, dt, positions[i].x, positions[i].y);
+        // A puff of dust when landing from a jump (knockdowns have their own slam).
+        if (f.grounded && wasAirborne[i] && f.action !== 'hit') effects.dust(positions[i].x, 0.45, positions[i].y);
+        wasAirborne[i] = !f.grounded;
+      });
       stage.updateCamera(dt, positions);
       effects.syncProjectiles(state.projectiles || [], dt);
       effects.syncPickup(state.pickup ?? null, dt);

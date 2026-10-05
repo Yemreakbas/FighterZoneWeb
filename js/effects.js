@@ -22,7 +22,30 @@ export function createEffects(scene) {
   const flashLight = new THREE.PointLight(0xffe0a0, 0, 6);
   scene.add(flashLight);
 
+  // Shockwave: a flat ring that expands from each clean hit.
+  const RING_LIFE = 0.28;
+  const ringGeo = new THREE.RingGeometry(0.7, 0.85, 32);
+  const rings = Array.from({ length: 6 }, () => {
+    const m = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({
+      transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+    }));
+    m.visible = false;
+    scene.add(m);
+    return { mesh: m, age: RING_LIFE, size: 1 };
+  });
+  let ringCursor = 0;
+
   function spark(x, y, { blocked = false, heavy = false } = {}) {
+    if (!blocked) {
+      const r = rings[ringCursor];
+      ringCursor = (ringCursor + 1) % rings.length;
+      r.age = 0;
+      r.size = heavy ? 1.4 : 0.9;
+      r.mesh.material.color.set(heavy ? 0xff9a3a : 0xfff0a0);
+      r.mesh.position.set(x, y, 0.35);
+      r.mesh.rotation.set(0, 0, Math.random() * Math.PI);
+      r.mesh.visible = true;
+    }
     const s = pool[cursor];
     cursor = (cursor + 1) % POOL_SIZE;
     s.age = 0;
@@ -38,6 +61,14 @@ export function createEffects(scene) {
   }
 
   function update(dt) {
+    for (const r of rings) {
+      if (!r.mesh.visible) continue;
+      r.age += dt;
+      const k = r.age / RING_LIFE;
+      if (k >= 1) { r.mesh.visible = false; continue; }
+      r.mesh.scale.setScalar(r.size * (0.25 + k * 0.9));
+      r.mesh.material.opacity = 0.9 * (1 - k);
+    }
     for (const s of pool) {
       if (!s.mesh.visible) continue;
       s.age += dt;
@@ -63,8 +94,8 @@ export function createEffects(scene) {
     return { mesh, vx: 0, vz: 0, vy: 0, age: DUST_LIFE, size: 0.2 };
   });
 
-  /** Floor impact at `x`; `strength` scales spread and puff size. */
-  function dustBurst(x, strength = 1) {
+  /** Impact on a surface at `x` (height `y`); `strength` scales spread and puff size. */
+  function dustBurst(x, strength = 1, y = 0) {
     dust.forEach((d, i) => {
       const side = i % 2 === 0 ? 1 : -1;
       d.age = 0;
@@ -72,7 +103,7 @@ export function createEffects(scene) {
       d.vx = side * (1.5 + Math.random() * 3) * strength;
       d.vz = (Math.random() - 0.5) * 2;
       d.vy = 0.4 + Math.random() * 1.2;
-      d.mesh.position.set(x + side * Math.random() * 0.3, 0.08, (Math.random() - 0.5) * 0.4);
+      d.mesh.position.set(x + side * Math.random() * 0.3, y + 0.08, (Math.random() - 0.5) * 0.4);
       d.mesh.visible = true;
     });
   }

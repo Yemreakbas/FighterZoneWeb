@@ -293,21 +293,41 @@ kbd {
 }
 
 .health {
+  position: relative;
   width: 100%;
   height: 22px;
   background: rgba(0, 0, 0, 0.6);
   border: 2px solid #fff;
   border-radius: 4px;
   overflow: hidden;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(0, 0, 0, 0.6);
 }
 .health-fill {
-  height: 100%;
+  position: absolute;
+  inset: 0 auto 0 0;
   width: 100%;
   background: var(--hp);
-  transition: width 0.15s ease-out;
+  transition: width 0.12s ease-out;
 }
-.health-fill.low { background: var(--hp-low); }
-.fighter-info.right .health { display: flex; justify-content: flex-end; }
+/* Glossy highlight on the top half of the bar. */
+.health-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 50% 0;
+  background: linear-gradient(rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0.05));
+}
+/* Recent damage: a pale strip behind the bar that drains after a beat. */
+.health-trail {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 100%;
+  background: #fff3d6;
+  transition: width 0.55s ease-in 0.35s;
+}
+.health-trail.instant { transition: none; }
+.health-fill.low { background: var(--hp-low); animation: hp-pulse 0.8s ease-in-out infinite; }
+@keyframes hp-pulse { 50% { filter: brightness(1.6); } }
+.fighter-info.right .health-fill, .fighter-info.right .health-trail { inset: 0 0 0 auto; }
 
 .round-info {
   display: flex;

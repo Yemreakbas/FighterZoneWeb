@@ -110,6 +110,7 @@ export function createStage(container) {
     arena.pillar.color.setHex(a.pillar);
     arena.lip.emissive.setHex(a.torch);
     arena.flame.color.setHex(a.torch);
+    arena.ember.color.setHex(a.torch);
     arena.emblem.color.setHex(a.torch);
     arena.banners.forEach((m, j) => {
       m.color.setHex(a.banners[j]);
@@ -183,6 +184,7 @@ export function createStage(container) {
 
   /** Ambient animation: torch flames flicker. `time` in seconds. */
   function animate(time) {
+    arena.updateEmbers(time);
     arena.flames.forEach((f, i) => {
       const k = 1 + Math.sin(time * 13 + i * 2.1) * 0.12 + Math.sin(time * 29 + i) * 0.06;
       f.scale.set(1, k, 1);
@@ -409,7 +411,37 @@ function addDetails(scene, stoneMat) {
     freeze(ring);
   }
 
-  return { flames, flame: flameMat, emblem: emblemMat };
+  // Embers drifting up from the torches: one Points draw call.
+  const EMBERS = 70;
+  const emberPos = new Float32Array(EMBERS * 3);
+  const emberSeed = Array.from({ length: EMBERS }, () => ({
+    x: [-11, -2.6, 2.6, 11][Math.floor(Math.random() * 4)] + (Math.random() - 0.5) * 0.6,
+    z: -6.9 + Math.random() * 0.6,
+    speed: 0.4 + Math.random() * 0.6,
+    offset: Math.random() * 10,
+    drift: (Math.random() - 0.5) * 0.8,
+  }));
+  const emberGeo = new THREE.BufferGeometry();
+  emberGeo.setAttribute('position', new THREE.BufferAttribute(emberPos, 3));
+  const emberMat = new THREE.PointsMaterial({
+    color: 0xffa040, size: 0.07, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+  const embers = new THREE.Points(emberGeo, emberMat);
+  embers.frustumCulled = false;
+  scene.add(embers);
+
+  /** Each ember rises from its torch for a few metres, then starts over. */
+  function updateEmbers(time) {
+    emberSeed.forEach((e, i) => {
+      const h = (time * e.speed + e.offset) % 5;
+      emberPos[i * 3] = e.x + Math.sin(time * 1.3 + e.offset) * 0.2 + e.drift * h * 0.3;
+      emberPos[i * 3 + 1] = 4.1 + h;
+      emberPos[i * 3 + 2] = e.z;
+    });
+    emberGeo.attributes.position.needsUpdate = true;
+  }
+
+  return { flames, flame: flameMat, emblem: emblemMat, ember: emberMat, updateEmbers };
 }
 
 // ---------------------------------------------------------------------------

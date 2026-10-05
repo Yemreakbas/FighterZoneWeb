@@ -63,7 +63,7 @@ export function setupFighters(fighters) {
       .map((f) => `
         <div class="frow${compact ? ' compact' : ''}${f.local && compact ? ' me' : ''}" id="row-${f.i}">
           <span class="fighter-name">${escapeHtml(f.name)}${f.local && compact ? ' (SEN)' : ''}</span>
-          <div class="health"><div class="health-fill" id="hp-${f.i}"></div></div>
+          <div class="health"><div class="health-trail" id="ht-${f.i}"></div><div class="health-fill" id="hp-${f.i}"></div></div>
           <div class="special" title="Özel hareket"><div class="special-fill" id="sp-${f.i}"></div></div>
         </div>`).join('');
   }
@@ -75,6 +75,14 @@ export function setHealth(index, hp, maxHp) {
   const pct = Math.max(0, Math.min(1, hp / maxHp)) * 100;
   el.style.width = `${pct}%`;
   el.classList.toggle('low', pct <= 25);
+  // The trail shows recent damage and catches up after a short delay
+  // (CSS transition); healing snaps it up with the bar.
+  const trail = $(`ht-${index}`);
+  if (trail) {
+    const prev = parseFloat(trail.style.width) || 100;
+    trail.classList.toggle('instant', pct >= prev);
+    trail.style.width = `${pct}%`;
+  }
   $(`row-${index}`)?.classList.toggle('down', hp <= 0);
 }
 

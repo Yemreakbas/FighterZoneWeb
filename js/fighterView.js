@@ -8,12 +8,16 @@ import { ATTACKS } from './config.js';
 
 const SKIN = 0xd9a37a;
 const DARK = 0x1c1c22;
+const BONE = 0xe8dcc0;
 
 export function createFighterView(scene, color) {
   const mats = {
     skin: new THREE.MeshStandardMaterial({ color: SKIN, roughness: 0.7 }),
     cloth: new THREE.MeshStandardMaterial({ color, roughness: 0.55 }),
     dark: new THREE.MeshStandardMaterial({ color: DARK, roughness: 0.8 }),
+    glove: new THREE.MeshStandardMaterial({ color: DARK, roughness: 0.6 }),
+    bone: new THREE.MeshStandardMaterial({ color: BONE, roughness: 0.5 }),
+    bolt: new THREE.MeshStandardMaterial({ color: 0xfff2a0, emissive: 0xffd23f, emissiveIntensity: 0.8, roughness: 0.4 }),
   };
 
   const mesh = (geo, mat, x = 0, y = 0, z = 0) => {
@@ -54,7 +58,7 @@ export function createFighterView(scene, color) {
   head.add(mesh(new THREE.CylinderGeometry(0.178, 0.178, 0.1, 16), mats.cloth, 0, 0.08)); // headband
   head.add(mesh(new THREE.BoxGeometry(0.2, 0.05, 0.05), mats.dark, 0, 0.1, 0.16));         // eye slit
 
-  const fist = () => mesh(new THREE.SphereGeometry(0.08, 10, 8), mats.dark, 0, -0.3);
+  const fist = () => mesh(new THREE.SphereGeometry(0.08, 10, 8), mats.glove, 0, -0.3);
   const foot = () => mesh(new THREE.BoxGeometry(0.13, 0.07, 0.26), mats.dark, 0, -0.45, 0.05);
 
   // L sits on local +X, R on local -X. Which one is nearer to the camera
@@ -67,6 +71,75 @@ export function createFighterView(scene, color) {
     L: limb(hips, 0.13, -0.06, 0.46, 0.44, 0.09, mats.cloth, mats.cloth, foot()),
     R: limb(hips, -0.13, -0.06, 0.46, 0.44, 0.09, mats.cloth, mats.cloth, foot()),
   };
+
+  // ---- Character gear: each fighter's silhouette, built on setCharacter ----
+  // Pieces are added to the existing joints so they follow the animation;
+  // `sway` pieces (cape, bandana tails) flare with speed and flutter.
+  // Everything stays under BODY.drawnHeight (platform collisions).
+  let gear = [];
+  let sway = [];
+  let charId = null;
+  const add = (parent, obj) => {
+    parent.add(obj);
+    gear.push(obj);
+    return obj;
+  };
+  const pivot = (parent, x, y, z, base) => {
+    const g = add(parent, new THREE.Group());
+    g.position.set(x, y, z);
+    g.rotation.x = base;
+    sway.push({ obj: g, base, phase: Math.random() * 6 });
+    return g;
+  };
+
+  function setCharacter(id) {
+    if (id === charId) return;
+    charId = id;
+    for (const g of gear) g.parent.remove(g);
+    gear = [];
+    sway = [];
+    body.scale.set(1, 1, 1);
+    mats.glove.color.setHex(DARK);
+    mats.cloth.side = THREE.FrontSide;
+
+    if (id === 'kor') {
+      // Heavyweight: broader build, spiked shoulder plates, horned helmet.
+      body.scale.set(1.08, 1.03, 1.08);
+      for (const side of [-1, 1]) {
+        add(spine, mesh(new THREE.BoxGeometry(0.26, 0.12, 0.36), mats.dark, side * 0.34, 0.7, 0));
+        const spike = add(spine, mesh(new THREE.ConeGeometry(0.05, 0.14, 6), mats.bone, side * 0.4, 0.81, 0));
+        spike.rotation.z = -side * 0.5;
+        const horn = add(head, mesh(new THREE.ConeGeometry(0.035, 0.2, 6), mats.bone, side * 0.19, 0.12, 0));
+        horn.rotation.z = -side * 1.15;
+      }
+      add(head, mesh(new THREE.SphereGeometry(0.19, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), mats.dark, 0, 0.07, 0));
+    } else if (id === 'ayaz') {
+      // Ice fighter: pale ice gloves and bandana tails streaming behind.
+      mats.glove.color.setHex(0xbfe8ff);
+      for (const dx of [-0.04, 0.05]) {
+        const tail = pivot(head, dx, 0.09, -0.17, 0.5);
+        tail.add(mesh(new THREE.BoxGeometry(0.05, 0.26, 0.015), mats.cloth, 0, -0.13, 0));
+      }
+    } else if (id === 'kuzgun') {
+      // Raven: slim build, hood and a cape (cloth drawn double-sided for it).
+      body.scale.set(0.95, 1, 0.95);
+      mats.cloth.side = THREE.DoubleSide;
+      const hood = add(head, mesh(new THREE.SphereGeometry(0.2, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.62), mats.cloth, 0, 0.05, -0.02));
+      hood.rotation.x = -0.35;
+      const cape = pivot(spine, 0, 0.66, -0.17, 0.12);
+      cape.add(mesh(new THREE.PlaneGeometry(0.52, 0.95), mats.cloth, 0, -0.47, 0));
+    } else if (id === 'yildirim') {
+      // Thunder: spiky hair and a lightning bolt on the chest.
+      [[-0.1, -0.5], [-0.04, -0.2], [0.03, 0.15], [0.09, 0.45], [0, 0], [0, -0.1]].forEach(([x, tilt], i) => {
+        const spike = add(head, mesh(new THREE.ConeGeometry(0.05, i < 4 ? 0.16 : 0.12, 6), mats.cloth, x, 0.2, i === 5 ? -0.09 : -0.02));
+        spike.rotation.set(i === 5 ? -0.6 : -0.2, 0, tilt);
+      });
+      for (const [x, y, rz] of [[0.04, 0.5, 0.5], [-0.03, 0.38, -0.5], [0.03, 0.26, 0.5]]) {
+        const seg = add(spine, mesh(new THREE.BoxGeometry(0.05, 0.15, 0.02), mats.bolt, x, y, 0.16));
+        seg.rotation.z = rz;
+      }
+    }
+  }
 
   // Team-fight markers: a ring on the floor in the team colour and an arrow
   // over the local player's head. Hidden in 1v1.
@@ -99,6 +172,10 @@ export function createFighterView(scene, color) {
     animTime += dt;
     root.position.set(x, y, 0);
     // After a fatality the body is replaced by flying pieces (effects.js).
+    // Cape and bandana tails flare with speed and flutter a little.
+    const speed = Math.min(Math.abs(f.vx ?? 0) * 0.08 + (f.grounded === false ? 0.25 : 0), 0.8);
+    for (const s of sway) s.obj.rotation.x = s.base + speed + Math.sin(animTime * 7 + s.phase) * 0.06;
+
     // Blinks while untouchable after a combo breaker.
     const blink = f.guard > 0 && Math.floor(animTime * 18) % 2 === 0;
     root.visible = enabled && f.action !== 'fatality' && !blink;
@@ -142,6 +219,8 @@ export function createFighterView(scene, color) {
     update,
     flash: () => { flashT = 0.08; },
     setColor: (color) => mats.cloth.color.setHex(color),
+    /** Character-specific gear and build (CHARACTERS[i].id). */
+    setCharacter,
     /** Unused views (fighters 3-4 in a 1v1) stay hidden. */
     setEnabled(on) {
       enabled = on;

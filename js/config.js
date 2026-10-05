@@ -62,9 +62,10 @@ export const BODY = {
   width: 0.7,
   height: 1.9,
   crouchHeight: 1.15,
-  // Top of the drawn model's head (fighterView proportions, incl. bob); used
-  // for platform collisions so nothing visibly sticks into a slab.
-  drawnHeight: 2.18,
+  // Top of the drawn model (fighterView proportions incl. bob, KOR's larger
+  // build and helmet, YILDIRIM's hair); used for platform collisions so
+  // nothing visibly sticks into a slab.
+  drawnHeight: 2.32,
 };
 
 /**

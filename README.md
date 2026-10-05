@@ -96,6 +96,17 @@ Maç sırasında (antrenmanda değil) rastgele bir platformun üstünde dönen b
 
 Dokunan alır. 10 saniye içinde kimse almazsa kaybolur. Botlar canları azken ya da özel hareketleri dolarken, yakınlarında rakip yoksa kristale gider. Online maçta kristali host belirler, herkes aynısını görür.
 
+## Görsel
+
+- Her karakterin kendine özgü görünümü var:
+  - **KOR:** iri yapı, dikenli omuz zırhı, boynuzlu kask.
+  - **AYAZ:** buz mavisi eldivenler, savrulan bandana uçları.
+  - **KUZGUN:** ince yapı, başlık ve hızla dalgalanan pelerin.
+  - **YILDIRIM:** dikenli saç, göğsünde parlayan şimşek.
+- Can barları parlak; yenen hasar arkada açık renkli bir iz olarak kalır ve kısa bir gecikmeyle erir. Can %25'in altına inince bar nabız gibi atar.
+- Temiz vuruşlarda kıvılcımın yanında genişleyen bir şok halkası çıkar. Zıplayıp bir yüzeye inince küçük bir toz bulutu kalkar.
+- Arenada meşalelerden kıvılcımlar yükselir (tek çizim çağrısı).
+
 ## Müzik
 
 Maç sırasında, tıpkı ses efektleri gibi Web Audio ile kodda üretilen bir müzik çalar: 132 BPM, Am–F–G–E akorlarında 4 ölçülük döngü. Bas, davul, hi-hat ve arada bir arpej var. Notalar ses saatine göre biraz önceden planlandığı için oyun yoğunken de tempo kaymaz. Maç bitince susar, menüde çalmaz. Ses dosyası yoktur.
