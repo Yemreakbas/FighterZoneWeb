@@ -1,4 +1,5 @@
 import { ARENAS, CHARACTERS, NET, TICK } from './config.js';
+import { defaultTeams } from './game.js';
 
 // State packets (host -> client) and client-side interpolation.
 //
@@ -72,6 +73,7 @@ function encodeFull(f) {
     ch: f.char, x: r3(f.x), y: r3(f.y), vx: r3(f.vx), vy: r3(f.vy), d: f.facing, hp: r3(f.hp),
     a: f.action, t: r3(f.t), c: f.crouch ? 1 : 0, g: f.grounded ? 1 : 0, st: r3(f.stun),
     ah: f.attackHit ? 1 : 0, aa: f.airAttack ? 1 : 0, b: f.buffer ? [f.buffer.type, r3(f.buffer.age)] : 0,
+    cd: r3(f.cooldown),
   };
 }
 
@@ -84,23 +86,27 @@ function decodeFull(o) {
     char: validChar(o.ch), x: num(o.x), y: num(o.y), vx: num(o.vx), vy: num(o.vy),
     facing: o.d < 0 ? -1 : 1, hp: num(o.hp), action: ACTIONS.has(o.a) ? o.a : 'idle', t: num(o.t),
     crouch: !!o.c, grounded: !!o.g, stun: num(o.st), attackHit: !!o.ah, airAttack: !!o.aa, buffer: buf,
+    cooldown: Math.max(0, num(o.cd)),
   };
 }
 
 /**
- * `ack` is the last client input sequence the host has applied; it and the
- * full client-fighter state (`me`) drive client-side reconciliation.
+ * `ack` is the last input sequence the host has applied from this client;
+ * it and the full state of the client's own fighter (`me`, index `meIndex`)
+ * drive client-side reconciliation. Each client gets its own packet.
  */
-export function encodeSnapshot(state, tick, events, ack = 0) {
+export function encodeSnapshot(state, tick, events, ack = 0, meIndex = 1) {
   return {
     t: 's',
     k: tick,
     a: ack,
-    me: encodeFull(state.fighters[1]),
+    mi: meIndex,
+    me: encodeFull(state.fighters[meIndex]),
     s: {
       hs: r3(state.hitstop || 0),
       n: state.names,
       ch: state.chars,
+      tg: state.teams,
       ar: state.arena,
       r: state.round,
       tm: r3(state.timer),
@@ -110,7 +116,7 @@ export function encodeSnapshot(state, tick, events, ack = 0) {
       wn: state.winner,
       f: state.fighters.map((f) => ({
         x: r3(f.x), y: r3(f.y), d: f.facing, hp: r3(f.hp),
-        a: f.action, t: r3(f.t), c: f.crouch ? 1 : 0, g: f.grounded ? 1 : 0,
+        a: f.action, t: r3(f.t), c: f.crouch ? 1 : 0, g: f.grounded ? 1 : 0, cd: r3(f.cooldown),
       })),
       pr: state.projectiles.map((p) => ({ o: p.owner, x: r3(p.x), y: r3(p.y), d: Math.sign(p.vx) })),
     },
@@ -127,28 +133,36 @@ const validChar = (c) => (Number.isInteger(c) && c >= 0 && c < CHARACTERS.length
 const num = (v, fallback = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
 
 /**
- * Everything the client predictor needs from a packet, or null if invalid.
- * `opp` is the host's own fighter, used for facing and push-apart.
+ * Everything the client predictor needs from a packet, or null if invalid:
+ * our own fighter's full state (`me`, at `index`) plus every fighter and the
+ * teams, used for facing and push-apart.
  */
 export function decodeAuthority(msg) {
   const state = decodeState(msg?.s);
   const me = decodeFull(msg?.me);
-  if (!state || !me) return null;
+  const index = msg?.mi ?? 1; // packets without an index address fighter 1 (1v1 client)
+  if (!state || !me || !Number.isInteger(index) || index < 0 || index >= state.fighters.length) return null;
   return {
     ack: Math.max(0, Math.floor(num(msg.a))),
     phase: state.phase,
     hitstop: Math.max(0, num(msg.s.hs)),
     me,
-    opp: state.fighters[0],
+    index,
+    fighters: state.fighters,
+    teams: state.teams,
   };
 }
 
 /** Rebuild a renderer-friendly state from a packet, rejecting garbage. */
 function decodeState(s) {
-  if (!s || !Array.isArray(s.f) || s.f.length !== 2 || !PHASES.has(s.p)) return null;
+  if (!s || !Array.isArray(s.f) || (s.f.length !== 2 && s.f.length !== 4) || !PHASES.has(s.p)) return null;
+  const n = s.f.length;
+  const list = (v, fallback, map) => (Array.isArray(v) && v.length === n ? v.map(map) : fallback);
+  const teams = list(s.tg, defaultTeams(n), (t) => (t === 1 ? 1 : 0));
   return {
-    names: Array.isArray(s.n) ? s.n.slice(0, 2).map((x) => String(x).slice(0, 16)) : ['P1', 'P2'],
-    chars: Array.isArray(s.ch) ? [validChar(s.ch[0]), validChar(s.ch[1])] : [0, 1],
+    names: list(s.n, s.f.map((_, i) => `P${i + 1}`), (x) => String(x).slice(0, 16)),
+    chars: list(s.ch, s.f.map((_, i) => i % CHARACTERS.length), validChar),
+    teams,
     arena: Number.isInteger(s.ar) && s.ar >= 0 && s.ar < ARENAS.length ? s.ar : 0,
     round: num(s.r, 1),
     timer: num(s.tm),
@@ -159,10 +173,10 @@ function decodeState(s) {
     fighters: s.f.map((f) => ({
       x: num(f?.x), y: num(f?.y), facing: f?.d < 0 ? -1 : 1, hp: num(f?.hp),
       action: ACTIONS.has(f?.a) ? f.a : 'idle', t: num(f?.t),
-      crouch: !!f?.c, grounded: !!f?.g,
+      crouch: !!f?.c, grounded: !!f?.g, cooldown: Math.max(0, num(f?.cd)),
     })),
-    projectiles: (Array.isArray(s.pr) ? s.pr.slice(0, 4) : []).map((p) => ({
-      owner: p?.o === 1 ? 1 : 0, x: num(p?.x), y: num(p?.y), vx: p?.d < 0 ? -1 : 1,
+    projectiles: (Array.isArray(s.pr) ? s.pr.slice(0, n) : []).map((p) => ({
+      owner: Number.isInteger(p?.o) && p.o >= 0 && p.o < n ? p.o : 0, x: num(p?.x), y: num(p?.y), vx: p?.d < 0 ? -1 : 1,
     })),
   };
 }

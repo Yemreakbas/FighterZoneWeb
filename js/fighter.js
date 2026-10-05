@@ -27,6 +27,8 @@ export function createFighter(x, facing, char = 0) {
     stun: 0,           // remaining hit/block stun
     attackHit: false,  // current attack already connected / projectile already fired
     airAttack: false,  // one aerial attack per jump
+    cooldown: 0,       // seconds until the special move is ready again
+    drop: 0,           // seconds left falling through platforms (down + jump)
     buffer: null,      // { type, age } attack pressed while busy
   };
 }
@@ -64,6 +66,7 @@ function setAction(f, action) {
 }
 
 function startAttack(f, type) {
+  if (type === 'special') f.cooldown = ATTACKS.special.cooldown;
   f.action = type;
   f.t = 0;
   f.attackHit = false;
@@ -87,6 +90,8 @@ export function bufferPress(f, input) {
  */
 export function stepFighter(f, input, opp, dt) {
   f.t += dt;
+  f.cooldown = Math.max(0, f.cooldown - dt);
+  f.drop = Math.max(0, f.drop - dt);
 
   // Remember attack presses that arrive while the fighter cannot act yet.
   const pressedMove = input.special ? 'special' : input.punch ? 'punch' : input.kick ? 'kick' : null;
@@ -123,6 +128,17 @@ function control(f, input, opp) {
   // Grounded fighters always turn to face the opponent.
   if (opp.x !== f.x) f.facing = Math.sign(opp.x - f.x);
 
+  // Down + jump on a platform drops through it.
+  if (input.jump && input.down && !input.block && f.y > ARENA.groundY) {
+    f.drop = ARENA.dropThrough;
+    f.grounded = false;
+    f.crouch = false;
+    f.vy = 0;
+    setAction(f, 'jump');
+    f.airAttack = false;
+    return;
+  }
+
   if (input.jump && !input.down && !input.block) {
     const dir = (input.right ? 1 : 0) - (input.left ? 1 : 0);
     f.vy = PHYSICS.jumpVelocity;
@@ -136,10 +152,13 @@ function control(f, input, opp) {
 
   f.crouch = input.down;
 
+  // A special pressed while it is recharging does nothing.
+  if (f.buffer?.type === 'special' && f.cooldown > 0) f.buffer = null;
+
   if (f.buffer) {
     // Forward + punch next to a grabbable opponent becomes a throw.
     const forward = f.facing > 0 ? input.right : input.left;
-    const grab = f.buffer.type === 'punch' && forward && canBeThrown(opp)
+    const grab = f.buffer.type === 'punch' && forward && canBeThrown(opp) && sameLevel(f, opp)
       && Math.abs(opp.x - f.x) <= ATTACKS.throw.reach;
     if (f.buffer.type === 'special' || grab) f.crouch = false; // always done standing
     startAttack(f, grab ? 'throw' : f.buffer.type);
@@ -168,13 +187,22 @@ function integrate(f, dt) {
     f.vx *= Math.exp(-PHYSICS.knockbackDecay * dt);
   }
 
+  // Walking off a platform's edge starts a fall.
+  if (f.grounded && f.y > ARENA.groundY && !platformAt(f.x, f.y)) {
+    f.grounded = false;
+    f.crouch = false;
+    if (!BUSY.has(f.action)) setAction(f, 'jump');
+  }
+
+  const prevY = f.y;
   if (!f.grounded) f.vy += PHYSICS.gravity * dt;
   f.x += f.vx * dt;
   f.y += f.vy * dt;
 
-  if (f.y <= ARENA.groundY) {
+  const floor = landingHeight(f, prevY);
+  if (f.y <= floor) {
     const wasAirborne = !f.grounded;
-    f.y = ARENA.groundY;
+    f.y = floor;
     f.vy = 0;
     f.grounded = true;
     if (wasAirborne) {
@@ -195,6 +223,25 @@ function integrate(f, dt) {
   }
 
   f.x = Math.max(-ARENA.halfWidth, Math.min(ARENA.halfWidth, f.x));
+}
+
+/** The platform whose surface is at height `y` under `x`, if any. */
+function platformAt(x, y) {
+  return ARENA.platforms.find((p) => x >= p.x0 && x <= p.x1 && Math.abs(p.y - y) < 1e-6);
+}
+
+/**
+ * Highest surface the fighter can land on this tick: a platform it was above
+ * (or on) last tick and is now at or below, while falling and not dropping
+ * through; otherwise the floor.
+ */
+function landingHeight(f, prevY) {
+  let floor = ARENA.groundY;
+  if (f.vy > 0 || f.drop > 0) return floor;
+  for (const p of ARENA.platforms) {
+    if (p.y > floor && f.x >= p.x0 && f.x <= p.x1 && prevY >= p.y - 1e-6) floor = p.y;
+  }
+  return floor;
 }
 
 // ---------------------------------------------------------------------------
@@ -332,6 +379,9 @@ function canBeThrown(f) {
   return f.grounded && THROWABLE.has(f.action) && !(f.action === 'block' && f.stun > 0);
 }
 
+/** Both standing on the same surface (floor or the same platform). */
+const sameLevel = (a, b) => Math.abs(a.y - b.y) < 0.3;
+
 /**
  * Detection only: returns a throw contact if `attacker`'s grab is live and
  * `defender` is in reach and grabbable at this moment, otherwise null.
@@ -340,7 +390,7 @@ export function findThrow(attacker, defender) {
   if (attacker.action !== 'throw' || attacker.attackHit) return null;
   const a = ATTACKS.throw;
   if (attacker.t < a.startup || attacker.t >= a.startup + a.active) return null;
-  if (!canBeThrown(defender) || Math.abs(defender.x - attacker.x) > a.reach) return null;
+  if (!canBeThrown(defender) || !sameLevel(attacker, defender) || Math.abs(defender.x - attacker.x) > a.reach) return null;
   return { attacker, defender };
 }
 

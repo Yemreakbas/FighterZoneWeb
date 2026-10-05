@@ -95,8 +95,8 @@ export function createEffects(scene) {
     }
   }
 
-  // Projectiles: up to one per fighter, coloured by owner.
-  const ORB_COLORS = [0xff5a3a, 0x3aa8ff];
+  // Projectiles: up to one per fighter (4 in a team fight), coloured by owner.
+  const ORB_COLORS = [0xff5a3a, 0x3aa8ff, 0xff5a3a, 0x3aa8ff];
   const orbGeo = new THREE.SphereGeometry(1, 16, 12);
   const orbs = ORB_COLORS.map((color) => {
     const group = new THREE.Group();

@@ -1,5 +1,6 @@
 import { TICK } from './config.js';
 import { bufferPress, separate, stepFighter } from './fighter.js';
+import { targetOf } from './game.js';
 
 // Client-side prediction for the local fighter in online play.
 //
@@ -24,12 +25,14 @@ export function createPredictor() {
   let seq = 0;
   let pending = [];          // [{ seq, input }] sent but not yet applied by the host
   let me = null;             // predicted fighter; null while not predicting
-  let opp = null;            // latest authoritative opponent
+  let index = 1;             // our fighter's index in the match
+  let others = [];           // latest authoritative fighters (ours replaced by `me`)
+  let teams = [0, 1];
   let hitstop = 0;
   let live = false;          // host only applies inputs during the fight phase
   const offset = { x: 0, y: 0 };
 
-  /** Mirror one host tick for our fighter (fighter index 1). */
+  /** Mirror one host tick for our fighter. */
   function advance(input) {
     if (!me || !live) return;
     if (hitstop > 0) {
@@ -37,10 +40,15 @@ export function createPredictor() {
       bufferPress(me, input);
       return;
     }
-    stepFighter(me, input, opp, TICK);
-    // The host separates (fighter0, fighter1); use a throwaway opponent copy
-    // so only our side of the push is applied.
-    separate({ ...opp }, me);
+    const fighters = others.map((f, i) => (i === index ? me : f));
+    stepFighter(me, input, fighters[targetOf(fighters, teams, index)], TICK);
+    // The host separates every pair of opponents; push against throwaway
+    // copies so only our side of each push is applied.
+    others.forEach((f, i) => {
+      if (teams[i] === teams[index]) return;
+      if (i < index) separate({ ...f }, me);
+      else separate(me, { ...f });
+    });
   }
 
   return {
@@ -59,7 +67,9 @@ export function createPredictor() {
       const before = me && live ? { x: me.x, y: me.y } : null;
 
       live = auth.phase === 'fight';
-      opp = auth.opp;
+      index = auth.index;
+      others = auth.fighters;
+      teams = auth.teams;
       hitstop = auth.hitstop;
       me = { ...auth.me, buffer: auth.me.buffer && { ...auth.me.buffer } };
       for (const p of pending) advance(p.input);

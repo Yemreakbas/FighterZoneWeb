@@ -13,15 +13,52 @@ import {
 //
 // Training matches never end: no timer, no K.O., health refills after each
 // combo and `damage` events report the combo's running total.
+//
+// A match has 2 fighters (1v1) or 4 (2v2). `teams[i]` is fighter i's team
+// (0 = left, 1 = right); wins, round and match winners are team indices, which
+// in 1v1 equal the fighter indices. Teammates pass through each other and
+// can't hurt each other. In a team fight a K.O.'d fighter stays down and the
+// round ends when a whole team is down; FINISH HIM is a 1v1-only finale.
 
 const START_X = 2.5;
+const TEAMMATE_GAP = 1.6;
 
-/** `chars` are indices into CHARACTERS for player 1 and 2; `arena` into ARENAS. */
-export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1], arena = 0, { training = false } = {}) {
+export const TEAM_NAMES = ['KIRMIZI TAKIM', 'MAVI TAKIM'];
+
+/** Default teams: first half of the fighters on the left team. */
+export const defaultTeams = (n) => Array.from({ length: n }, (_, i) => (i < n / 2 ? 0 : 1));
+
+/** Fighters still in the round (not knocked out). */
+export const isUp = (f) => f.action !== 'ko' && f.action !== 'fatality' && f.action !== 'dazed';
+
+/**
+ * Index of the enemy fighter `i` should face: the nearest one still up,
+ * otherwise the nearest enemy at all. Shared with client prediction.
+ */
+export function targetOf(fighters, teams, i) {
+  const me = fighters[i];
+  let best = -1;
+  let bestScore = Infinity;
+  fighters.forEach((f, j) => {
+    if (teams[j] === teams[i]) return;
+    const score = Math.abs(f.x - me.x) + Math.abs(f.y - me.y) * 0.5 + (isUp(f) ? 0 : 1000);
+    if (score < bestScore) { bestScore = score; best = j; }
+  });
+  return best < 0 ? (i + 1) % fighters.length : best;
+}
+
+/**
+ * `chars` are indices into CHARACTERS, one per fighter (2 or 4); `arena` into
+ * ARENAS; `teams` defaults to the first half against the second.
+ */
+export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1], arena = 0, { training = false, teams } = {}) {
+  teams = teams ?? defaultTeams(chars.length);
+  const duel = chars.length === 2;
   const state = {
     training,
     names,
     chars,
+    teams,
     arena,
     round: 1,
     timer: MATCH.roundTime,
@@ -38,12 +75,11 @@ export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1], ar
 
   const emit = (e) => events.push(e);
 
-  // Clean hits in the attacker's current combo. A hit counts toward the
+  // Clean hits in each attacker's current combo. A hit counts toward the
   // combo only if it lands while the defender is still in hitstun.
-  let combo = [0, 0];
+  let combo = chars.map(() => 0);
 
-  function landed(target, hit, wasStunned) {
-    const attacker = 1 - target;
+  function landed(attacker, target, hit, wasStunned) {
     emit({ ...hit, target });
     if (hit.blocked) {
       combo[attacker] = 0;
@@ -52,19 +88,25 @@ export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1], ar
     // Hit-stop: freeze the whole fight briefly so clean hits feel heavy.
     state.hitstop = Math.max(state.hitstop, hit.heavy ? HITSTOP.heavy : HITSTOP.light);
     combo[attacker] = wasStunned ? combo[attacker] + 1 : 1;
-    if (combo[attacker] >= 2) emit({ type: 'combo', attacker, count: combo[attacker] });
+    if (combo[attacker] >= 2) emit({ type: 'combo', attacker, team: teams[attacker], count: combo[attacker] });
   }
 
   function resetRound() {
-    state.fighters = [createFighter(-START_X, 1, chars[0]), createFighter(START_X, -1, chars[1])];
+    // Each team lines up on its own side, first member nearest the centre.
+    const slot = [0, 0];
+    state.fighters = chars.map((c, i) => {
+      const side = teams[i] === 0 ? -1 : 1;
+      const x = side * (START_X + slot[teams[i]]++ * TEAMMATE_GAP);
+      return createFighter(x, -side, c);
+    });
     state.projectiles = [];
-    combo = [0, 0];
+    combo = chars.map(() => 0);
     state.timer = MATCH.roundTime;
     state.phase = 'intro';
     state.phaseT = 0;
     state.roundWinner = -1;
     emit({ type: 'announce', text: training ? 'ANTRENMAN' : `ROUND ${state.round}`, ms: ROUND_FLOW.introAnnounce * 1000 });
-    trainee = [0, 1].map(() => ({ lastHp: MATCH.maxHp, quiet: 0, dealt: 0 }));
+    trainee = chars.map(() => ({ lastHp: MATCH.maxHp, quiet: 0, dealt: 0 }));
   }
 
   // Training bookkeeping per fighter: damage since the last refill.
@@ -106,6 +148,7 @@ export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1], ar
     loser.vx = 0;
     loser.buffer = null;
     state.fighters[winner].buffer = null; // no stray mashed attack into the finish
+    state.fighters[winner].cooldown = 0;  // the fatality must always be possible
     state.wins[winner]++;
     state.roundWinner = winner;
     state.phase = 'finish';
@@ -127,14 +170,16 @@ export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1], ar
     f.hp = 0;
   }
 
+  const enemies = (i, j) => teams[i] !== teams[j];
+
   function step(inputs, dt) {
-    const [a, b] = state.fighters;
+    const fighters = state.fighters;
 
     if (state.hitstop > 0) {
       state.hitstop = Math.max(0, state.hitstop - dt);
       // Nothing moves; presses are buffered (the buffer only ages while
       // the fight runs).
-      if (state.phase === 'fight') state.fighters.forEach((f, i) => bufferPress(f, inputs[i]));
+      if (state.phase === 'fight') fighters.forEach((f, i) => bufferPress(f, inputs[i] || EMPTY_INPUT));
       return;
     }
 
@@ -145,13 +190,20 @@ export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1], ar
     // only the winner moves.
     const live = state.phase === 'fight';
     const controls = (i) => live || (state.phase === 'finish' && i === state.roundWinner);
-    const airborneThrown = state.fighters.map(isKnockedDown);
-    stepFighter(a, controls(0) ? inputs[0] : EMPTY_INPUT, b, dt);
-    stepFighter(b, controls(1) ? inputs[1] : EMPTY_INPUT, a, dt);
-    state.fighters.forEach((f, i) => {
+    const airborneThrown = fighters.map(isKnockedDown);
+    const targets = fighters.map((_, i) => targetOf(fighters, teams, i));
+    fighters.forEach((f, i) => {
+      stepFighter(f, controls(i) ? inputs[i] || EMPTY_INPUT : EMPTY_INPUT, fighters[targets[i]], dt);
+    });
+    fighters.forEach((f, i) => {
       if (airborneThrown[i] && f.grounded) emit({ type: 'slam', target: i, x: f.x });
     });
-    separate(a, b);
+    // Only opponents push each other apart; teammates may overlap.
+    for (let i = 0; i < fighters.length; i++) {
+      for (let j = i + 1; j < fighters.length; j++) {
+        if (enemies(i, j)) separate(fighters[i], fighters[j]);
+      }
+    }
     stepProjectiles(dt, live);
 
     const crossed = (mark) => prevPhaseT < mark && state.phaseT >= mark;
@@ -163,20 +215,33 @@ export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1], ar
         state.phaseT = 0;
       }
     } else if (state.phase === 'fight') {
-      // Detect both contacts before applying either, so simultaneous
-      // attacks trade, then check KO.
-      const contacts = [[a, b, 1], [b, a, 0]]
-        .map(([atk, def, target]) => ({ contact: findHit(atk, def), target, wasStunned: def.action === 'hit' }))
-        .filter((c) => c.contact);
-      for (const { contact, target, wasStunned } of contacts) {
-        landed(target, applyContact(contact), wasStunned);
+      // Detect every contact before applying any, so simultaneous attacks
+      // trade, then check K.O. An attack connects with at most one fighter:
+      // the nearest enemy its hitbox touches.
+      const contacts = [];
+      fighters.forEach((atk, i) => {
+        for (const j of byDistance(i).filter((k) => enemies(i, k))) {
+          const contact = findHit(atk, fighters[j]);
+          if (contact) {
+            contacts.push({ contact, attacker: i, target: j, wasStunned: fighters[j].action === 'hit' });
+            break;
+          }
+        }
+      });
+      for (const { contact, attacker, target, wasStunned } of contacts) {
+        landed(attacker, target, applyContact(contact), wasStunned);
       }
       // Throws resolve after strikes: a fighter just hit is no longer
       // grabbable, and a thrower who got hit has lost the grab.
-      for (const [atk, def, target] of [[a, b, 1], [b, a, 0]]) {
-        const grab = findThrow(atk, def);
-        if (grab) landed(target, applyThrow(grab), false);
-      }
+      fighters.forEach((atk, i) => {
+        for (const j of byDistance(i).filter((k) => enemies(i, k))) {
+          const grab = findThrow(atk, fighters[j]);
+          if (grab) {
+            landed(i, j, applyThrow(grab), false);
+            break;
+          }
+        }
+      });
 
       if (training) {
         trainingRefill(dt);
@@ -184,19 +249,8 @@ export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1], ar
       }
 
       state.timer = Math.max(0, state.timer - dt);
-      const koA = a.hp <= 0;
-      const koB = b.hp <= 0;
-      const winner = koA && koB ? 2 : koA ? 1 : 0;
-      if ((koA !== koB) && state.wins[winner] + 1 >= MATCH.roundsToWin) {
-        startFinish(winner);
-      } else if (koA || koB) {
-        if (koA) knockOut(a);
-        if (koB) knockOut(b);
-        emit({ type: 'ko' });
-        endRound(winner, koA && koB ? 'DOUBLE K.O.' : 'K.O.');
-      } else if (state.timer <= 0) {
-        endRound(a.hp === b.hp ? 2 : a.hp > b.hp ? 0 : 1, 'TIME');
-      }
+      if (duel) checkDuelEnd();
+      else checkTeamEnd();
     } else if (state.phase === 'finish') {
       // A special move (projectile) on the dazed loser is a FATALITY. Normal
       // hits only make them stagger: players keep mashing after a K.O. and
@@ -226,13 +280,13 @@ export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1], ar
     } else if (state.phase === 'roundEnd') {
       const w = state.roundWinner;
       if (crossed(ROUND_FLOW.koToWinPose)) {
-        if (w === 0 || w === 1) {
-          const f = state.fighters[w];
+        fighters.forEach((f, i) => {
+          if (teams[i] !== w || !isUp(f)) return;
           f.action = 'win';
           f.t = 0;
           f.vx = 0;
-        }
-        emit({ type: 'announce', text: w === 2 ? 'BERABERE' : `${state.names[w]} KAZANDI`, ms: 1600 });
+        });
+        emit({ type: 'announce', text: w === 2 ? 'BERABERE' : `${teamName(w)} KAZANDI`, ms: 1600 });
       }
       if (state.phaseT >= ROUND_FLOW.roundEndTotal) {
         const champion = state.wins.findIndex((n) => n >= MATCH.roundsToWin);
@@ -246,6 +300,58 @@ export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1], ar
           resetRound();
         }
       }
+    }
+  }
+
+  /** Other fighters' indices, nearest to fighter `i` first. */
+  function byDistance(i) {
+    const me = state.fighters[i];
+    return state.fighters
+      .map((f, j) => ({ j, d: Math.abs(f.x - me.x) + Math.abs(f.y - me.y) }))
+      .filter((o) => o.j !== i)
+      .sort((a, b) => a.d - b.d)
+      .map((o) => o.j);
+  }
+
+  /** In 1v1 a fighter's name; in a team fight the team's name. */
+  const teamName = (team) => (duel ? state.names[team] : TEAM_NAMES[team]);
+
+  /** 1v1 K.O. / time-out rules, with FINISH HIM on the match-deciding K.O. */
+  function checkDuelEnd() {
+    const [a, b] = state.fighters;
+    const koA = a.hp <= 0;
+    const koB = b.hp <= 0;
+    const winner = koA && koB ? 2 : koA ? 1 : 0;
+    if ((koA !== koB) && state.wins[winner] + 1 >= MATCH.roundsToWin) {
+      startFinish(winner);
+    } else if (koA || koB) {
+      if (koA) knockOut(a);
+      if (koB) knockOut(b);
+      emit({ type: 'ko' });
+      endRound(winner, koA && koB ? 'DOUBLE K.O.' : 'K.O.');
+    } else if (state.timer <= 0) {
+      endRound(a.hp === b.hp ? 2 : a.hp > b.hp ? 0 : 1, 'TIME');
+    }
+  }
+
+  /**
+   * Team rules: a fighter at 0 HP drops and stays down; the round goes to
+   * the team with someone still standing. Time-out compares team health.
+   */
+  function checkTeamEnd() {
+    state.fighters.forEach((f, i) => {
+      if (f.hp <= 0 && f.action !== 'ko') {
+        knockOut(f);
+        emit({ type: 'ko', target: i });
+      }
+    });
+    const standing = [0, 1].map((t) => state.fighters.some((f, i) => teams[i] === t && f.action !== 'ko'));
+    if (!standing[0] || !standing[1]) {
+      const winner = standing[0] ? 0 : standing[1] ? 1 : 2;
+      endRound(winner, winner === 2 ? 'DOUBLE K.O.' : 'K.O.');
+    } else if (state.timer <= 0) {
+      const hp = [0, 1].map((t) => state.fighters.reduce((sum, f, i) => sum + (teams[i] === t ? f.hp : 0), 0));
+      endRound(hp[0] === hp[1] ? 2 : hp[0] > hp[1] ? 0 : 1, 'TIME');
     }
   }
 
@@ -271,22 +377,28 @@ export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1], ar
       p.life -= dt;
     }
 
-    // Opposing projectiles cancel each other out.
-    const [p0, p1] = [0, 1].map((o) => state.projectiles.find((p) => p.owner === o));
-    if (p0 && p1 && overlaps(projectileBox(p0), projectileBox(p1))) {
-      p0.life = p1.life = 0;
-      emit({ type: 'hit', blocked: true, heavy: true, x: (p0.x + p1.x) / 2, y: (p0.y + p1.y) / 2, target: -1 });
+    // Opposing teams' projectiles cancel each other out.
+    for (const p0 of state.projectiles) {
+      for (const p1 of state.projectiles) {
+        if (p0.life <= 0 || p1.life <= 0 || !enemies(p0.owner, p1.owner)) continue;
+        if (!overlaps(projectileBox(p0), projectileBox(p1))) continue;
+        p0.life = p1.life = 0;
+        emit({ type: 'hit', blocked: true, heavy: true, x: (p0.x + p1.x) / 2, y: (p0.y + p1.y) / 2, target: -1 });
+      }
     }
 
     if (live) {
       for (const p of state.projectiles) {
         if (p.life <= 0) continue;
-        const target = 1 - p.owner;
-        const wasStunned = state.fighters[target].action === 'hit';
-        const hit = projectileHit(p, state.fighters[target]);
-        if (hit) {
-          p.life = 0;
-          landed(target, hit, wasStunned);
+        for (const [target, f] of state.fighters.entries()) {
+          if (!enemies(p.owner, target) || !isUp(f)) continue;
+          const wasStunned = f.action === 'hit';
+          const hit = projectileHit(p, f);
+          if (hit) {
+            p.life = 0;
+            landed(p.owner, target, hit, wasStunned);
+            break;
+          }
         }
       }
     }

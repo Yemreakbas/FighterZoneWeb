@@ -69,16 +69,37 @@ export function createFighterView(scene, color) {
     R: limb(hips, -0.13, -0.06, 0.46, 0.44, 0.09, mats.cloth, mats.cloth, foot()),
   };
 
+  // Team-fight markers: a ring on the floor in the team colour and an arrow
+  // over the local player's head. Hidden in 1v1.
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(0.42, 0.55, 32),
+    new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.75, depthWrite: false, side: THREE.DoubleSide }),
+  );
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.03;
+  ring.visible = false;
+  root.add(ring);
+  const arrow = new THREE.Mesh(
+    new THREE.ConeGeometry(0.13, 0.26, 4),
+    new THREE.MeshBasicMaterial({ color: 0xffd23f }),
+  );
+  arrow.rotation.x = Math.PI; // point down
+  arrow.position.y = 2.35;
+  arrow.visible = false;
+  root.add(arrow);
+
   // Current (smoothed) pose. Angles in radians; negative X = swing forward.
   const cur = basePose();
   let flashT = 0;
   let animTime = Math.random() * 10;
+  let enabled = true;
 
   function update(f, dt, x, y) {
     animTime += dt;
     root.position.set(x, y, 0);
     // After a fatality the body is replaced by flying pieces (effects.js).
-    root.visible = f.action !== 'fatality';
+    root.visible = enabled && f.action !== 'fatality';
+    arrow.position.y = 2.35 + Math.sin(animTime * 5) * 0.06;
 
     // Turn mostly sideways but slightly toward the camera for readability.
     const targetYaw = f.facing * Math.PI / 2 * 0.78;
@@ -118,6 +139,17 @@ export function createFighterView(scene, color) {
     update,
     flash: () => { flashT = 0.08; },
     setColor: (color) => mats.cloth.color.setHex(color),
+    /** Unused views (fighters 3-4 in a 1v1) stay hidden. */
+    setEnabled(on) {
+      enabled = on;
+      if (!on) root.visible = false;
+    },
+    /** `teamColor` null hides the ring; `local` shows the "you" arrow. */
+    setMarker(teamColor, local) {
+      ring.visible = teamColor !== null;
+      if (teamColor !== null) ring.material.color.setHex(teamColor);
+      arrow.visible = local;
+    },
   };
 }
 

@@ -4,6 +4,18 @@
 export const ARENA = {
   halfWidth: 9,       // fighters are clamped to [-halfWidth, halfWidth] on X
   groundY: 0,
+  /**
+   * One-way platforms { x0, x1, y }: jump up through them from below, land on
+   * them from above, drop through with down + jump. A jump peaks at about
+   * jumpVelocity^2 / (2 * |gravity|) = 1.84, so the side platforms are
+   * reachable from the floor and the top one from a side platform.
+   */
+  platforms: [
+    { x0: -6.4, x1: -3.0, y: 1.5 },
+    { x0: 3.0, x1: 6.4, y: 1.5 },
+    { x0: -2.2, x1: 2.2, y: 3.0 },
+  ],
+  dropThrough: 0.25,  // seconds a dropping fighter ignores platforms
 };
 
 export const CAMERA = {
@@ -66,6 +78,7 @@ ATTACKS.special = {
   startup: 0.3, active: 0.05, recovery: 0.4,
   damage: 9, chip: 1.5,
   knockback: 3.5, hitstun: 0.35, blockstun: 0.2,
+  cooldown: 3, // seconds after starting a special before the next one
 };
 
 /**

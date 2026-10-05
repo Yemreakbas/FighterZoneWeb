@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 
 import { ARENA, ARENAS, ATTACKS, BOT_DIFFICULTIES, BOT_LEVELS, CHARACTERS, MATCH, NET, PHYSICS, SWEEP, TICK, TRAINING } from '../js/config.js';
 import { EMPTY_INPUT } from '../js/fighter.js';
-import { createMatch } from '../js/game.js';
+import { createMatch, targetOf } from '../js/game.js';
 import { botLevel, createBot } from '../js/bot.js';
 import {
   createInputQueue, createInterpolator, decodeAuthority, decodeInput, encodeInput,
@@ -194,6 +194,75 @@ test('a sweep on a fighter already in the air is just a kick', () => {
   assert.equal(ev.length, 1);
   assert.ok(!ev[0].sweep, 'airborne fighters are not swept');
   assert.equal(m.state.fighters[1].action, 'hit');
+});
+
+// ---------------------------------------------------------------------------
+// Platforms
+// ---------------------------------------------------------------------------
+
+const [leftPlat, rightPlat, topPlat] = ARENA.platforms;
+
+test('jumping up through a platform lands on top of it', () => {
+  const m = fightAt(-8, rightPlat.x0 + 1);
+  run(m, 60, (t) => [{}, t === 0 ? { jump: true } : {}]);
+  const f = m.state.fighters[1];
+  assert.equal(f.y, rightPlat.y);
+  assert.ok(f.grounded);
+});
+
+test('down + jump drops through a platform to the floor', () => {
+  const m = fightAt(-8, rightPlat.x0 + 1);
+  run(m, 60, (t) => [{}, t === 0 ? { jump: true } : {}]);
+  run(m, 60, (t) => [{}, { down: t < 2, jump: t === 1 }]);
+  const f = m.state.fighters[1];
+  assert.equal(f.y, ARENA.groundY);
+  assert.ok(f.grounded);
+});
+
+test('walking off a platform edge falls to the floor', () => {
+  const m = fightAt(-8, rightPlat.x0 + 0.3);
+  run(m, 60, (t) => [{}, t === 0 ? { jump: true } : {}]);
+  assert.equal(m.state.fighters[1].y, rightPlat.y);
+  run(m, 60, () => [{}, { left: true }]);
+  const f = m.state.fighters[1];
+  assert.equal(f.y, ARENA.groundY);
+  assert.ok(f.grounded);
+});
+
+test('the top platform is reachable from a side platform, not from the floor', () => {
+  const fromFloor = fightAt(-8, 0);
+  run(fromFloor, 60, (t) => [{}, t === 0 ? { jump: true } : {}]);
+  assert.equal(fromFloor.state.fighters[1].y, ARENA.groundY);
+
+  const m = fightAt(8, rightPlat.x0 + 0.1); // opponent on the right: fighter faces right
+  run(m, 60, (t) => [{}, t === 0 ? { jump: true } : {}]);
+  assert.equal(m.state.fighters[1].y, rightPlat.y);
+  run(m, 60, (t) => [{}, t === 0 ? { jump: true, left: true } : {}]);
+  const f = m.state.fighters[1];
+  assert.equal(f.y, topPlat.y);
+  assert.ok(f.x >= topPlat.x0 && f.x <= topPlat.x1);
+});
+
+test('a fighter cannot throw someone standing on a different level', () => {
+  const m = fightAt(leftPlat.x1 - 0.2, leftPlat.x1 + 0.4);
+  // Put fighter 1 on the floor next to fighter 0 standing on the platform.
+  run(m, 60, (t) => [t === 0 ? { jump: true } : {}, {}]);
+  assert.equal(m.state.fighters[0].y, leftPlat.y);
+  const ev = hits(run(m, 40, (t) => [t === 0 ? { right: true, punch: true } : {}, {}]));
+  assert.ok(!ev.some((e) => e.throw));
+});
+
+// ---------------------------------------------------------------------------
+// Special cooldown
+// ---------------------------------------------------------------------------
+
+test('the special move recharges before it can be used again', () => {
+  const m = fightAt(-8, 8);
+  const ev = run(m, 120, (t) => [t % 10 === 0 ? { special: true } : {}, {}]);
+  assert.equal(ev.filter((e) => e.type === 'fireball').length, 1, 'only one fireball within the cooldown');
+  run(m, Math.ceil(ATTACKS.special.cooldown / TICK), () => [{}, {}]);
+  const later = run(m, 30, (t) => [t === 0 ? { special: true } : {}, {}]);
+  assert.equal(later.filter((e) => e.type === 'fireball').length, 1, 'ready again after the cooldown');
 });
 
 // ---------------------------------------------------------------------------
@@ -490,6 +559,7 @@ test('hostile authority packets are sanitised', () => {
   assert.equal(auth.me.buffer, null);
   assert.equal(auth.me.char, 0);
   assert.equal(auth.hitstop, 0);
+  assert.equal(decodeAuthority({ t: 's', k: 1, mi: 7, me: {}, s: { p: 'fight', f: [{}, {}] } }), null, 'out-of-range fighter index');
 });
 
 // ---------------------------------------------------------------------------
@@ -584,4 +654,81 @@ test('an out-of-range arena from the network falls back to the first', () => {
   const interp = createInterpolator();
   interp.push(packet);
   assert.equal(interp.sample().state.arena, 0);
+});
+
+// ---------------------------------------------------------------------------
+// 2v2 team fights
+// ---------------------------------------------------------------------------
+
+/** A 2v2 in the fight phase; `xs` are the four fighters' X (teams 0,0,1,1). */
+function teamFightAt(xs) {
+  const m = createMatch(['A', 'B', 'C', 'D'], [1, 1, 1, 1]);
+  while (m.state.phase !== 'fight') m.step([EMPTY_INPUT, EMPTY_INPUT, EMPTY_INPUT, EMPTY_INPUT], TICK);
+  m.drainEvents();
+  xs.forEach((x, i) => { m.state.fighters[i].x = x; });
+  return m;
+}
+
+const run4 = (m, ticks, inputs) => {
+  const events = [];
+  for (let t = 0; t < ticks; t++) {
+    m.step(inputs(t).map((i) => ({ ...EMPTY_INPUT, ...i })), TICK);
+    events.push(...m.drainEvents());
+  }
+  return events;
+};
+
+test('2v2: teams line up on opposite sides', () => {
+  const m = createMatch(['A', 'B', 'C', 'D'], [0, 1, 2, 3]);
+  assert.deepEqual(m.state.teams, [0, 0, 1, 1]);
+  const xs = m.state.fighters.map((f) => f.x);
+  assert.ok(xs[0] < 0 && xs[1] < 0 && xs[2] > 0 && xs[3] > 0);
+});
+
+test('2v2: teammates cannot hit each other', () => {
+  // Fighter 0 punches toward its teammate (1); the enemies are far away.
+  const m = teamFightAt([0, 0.9, 8, 8.5]);
+  m.state.fighters[0].facing = 1;
+  const ev = run4(m, 30, (t) => [t === 0 ? { punch: true } : {}, {}, {}, {}]);
+  assert.equal(ev.filter((e) => e.type === 'hit').length, 0);
+  assert.equal(m.state.fighters[1].hp, MATCH.maxHp);
+});
+
+test('2v2: fighters face the nearest enemy', () => {
+  const m = teamFightAt([0, -3, 2, -6]);
+  assert.equal(targetOf(m.state.fighters, m.state.teams, 0), 2);
+  assert.equal(targetOf(m.state.fighters, m.state.teams, 1), 3);
+});
+
+test('2v2: a K.O.d fighter stays down and the round goes on until the team is out', () => {
+  const m = teamFightAt([-1, -6, 0, 6]);
+  m.state.fighters[0].hp = 1; // fighter 0 is next to fighter 2
+  const ev = run4(m, 40, (t) => [{}, {}, t === 0 ? { punch: true } : {}, {}]);
+  assert.equal(m.state.fighters[0].action, 'ko');
+  assert.ok(ev.some((e) => e.type === 'ko' && e.target === 0));
+  assert.equal(m.state.phase, 'fight', 'teammate still standing');
+
+  m.state.fighters[1].hp = 0;
+  run4(m, 2, () => [{}, {}, {}, {}]);
+  assert.equal(m.state.phase, 'roundEnd');
+  assert.equal(m.state.roundWinner, 1);
+  assert.equal(m.state.wins[1], 1);
+});
+
+test('2v2: time-out goes to the team with more total health', () => {
+  const m = teamFightAt([-8, -6, 6, 8]);
+  m.state.fighters[2].hp = 40;
+  m.state.timer = TICK / 2;
+  run4(m, 2, () => [{}, {}, {}, {}]);
+  assert.equal(m.state.roundWinner, 0);
+});
+
+test('2v2: four fighters and teams survive the network round trip', () => {
+  const m = teamFightAt([-3, -1, 1, 3]);
+  const packet = JSON.parse(JSON.stringify(encodeSnapshot(m.state, 5, [], 0, 3)));
+  const auth = decodeAuthority(packet);
+  assert.equal(auth.index, 3);
+  assert.deepEqual(auth.teams, [0, 0, 1, 1]);
+  assert.equal(auth.fighters.length, 4);
+  assert.equal(auth.me.x, 3);
 });

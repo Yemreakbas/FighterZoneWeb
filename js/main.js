@@ -1,6 +1,6 @@
 import { createStage } from './scene.js';
-import { ARENAS, BOT_DIFFICULTIES, CHARACTERS, DEFAULT_DIFFICULTY, MATCH, NET, TICK } from './config.js';
-import { createMatch } from './game.js';
+import { ARENAS, ATTACKS, BOT_DIFFICULTIES, CHARACTERS, DEFAULT_DIFFICULTY, MATCH, NET, TICK } from './config.js';
+import { TEAM_NAMES, createMatch, defaultTeams } from './game.js';
 import { EMPTY_INPUT, createFighter } from './fighter.js';
 import { createBot } from './bot.js';
 import { createKeyboard } from './input.js';
@@ -15,11 +15,9 @@ import * as ui from './ui.js';
 // ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
+const MAX_FIGHTERS = 4;
 const stage = createStage(document.getElementById('game-container'));
-const views = [
-  createFighterView(stage.scene, 0xc62828),
-  createFighterView(stage.scene, 0x1e5bd6),
-];
+const views = Array.from({ length: MAX_FIGHTERS }, (_, i) => createFighterView(stage.scene, CHARACTERS[i % CHARACTERS.length].color));
 const effects = createEffects(stage.scene);
 const keyboard = createKeyboard();
 
@@ -29,7 +27,8 @@ const menuFighters = [createFighter(-1.6, 1), createFighter(1.6, -1)];
 /**
  * The active game session, or null while in menus. A session exposes
  * `update(dt)` returning `{ state, events, positions }` for rendering, plus
- * optional `rematch()` / `dispose()` and a `canRematch` flag.
+ * optional `rematch()` / `dispose()`, a `canRematch` flag and `localIndex`
+ * (the fighter this player controls).
  */
 let session = null;
 
@@ -48,9 +47,10 @@ let helpReturn = 'menu';
  * Runs the authoritative simulation locally at a fixed tick. Used for solo
  * play (and by the P2P host). Rendering interpolates between the last two
  * ticks so motion stays smooth on high refresh-rate displays.
+ * `matchOptions` may carry `names`, `teams` and `training`.
  */
 function createLocalSession(chars, gatherInputs, onTick, matchOptions = {}) {
-  const names = chars.map((c) => CHARACTERS[c].name);
+  const names = matchOptions.names ?? chars.map((c) => CHARACTERS[c].name);
   // Every match (and rematch) is fought in a random arena.
   const randomArena = () => Math.floor(Math.random() * ARENAS.length);
   let match = createMatch(names, chars, randomArena(), matchOptions);
@@ -77,7 +77,7 @@ function createLocalSession(chars, gatherInputs, onTick, matchOptions = {}) {
     const positions = match.state.fighters.map((f, i) => {
       const p = prev[i];
       // A new round replaces the fighter objects; never lerp across that.
-      if (p.ref !== f) return { x: f.x, y: f.y };
+      if (!p || p.ref !== f) return { x: f.x, y: f.y };
       return { x: p.x + (f.x - p.x) * alpha, y: p.y + (f.y - p.y) * alpha };
     });
     const out = events;
@@ -108,8 +108,8 @@ function snapshotPositions(state) {
 /**
  * Calls `fn(dt)` every `ms` from a Web Worker timer. Browsers throttle
  * requestAnimationFrame (and main-thread timers) in background or unfocused
- * tabs, which would freeze the host's authoritative simulation for both
- * players; worker timers keep running. Falls back to setInterval.
+ * tabs, which would freeze the host's authoritative simulation for every
+ * player; worker timers keep running. Falls back to setInterval.
  */
 function createTicker(fn, ms) {
   let last = performance.now();
@@ -134,7 +134,7 @@ function createTicker(fn, ms) {
 
 // ---- Character select -----------------------------------------------------
 
-/** Mode chosen in the menu, waiting for a character pick: 'solo' | 'training' | 'host' | 'join'. */
+/** Mode chosen in the menu, waiting for a character pick: 'solo' | 'team' | 'training' | 'host' | 'join'. */
 let pendingMode = null;
 let myChar = 0;
 
@@ -160,11 +160,13 @@ function setDifficulty(btn) {
 
 const validChar = (c) => (Number.isInteger(c) && c >= 0 && c < CHARACTERS.length ? c : 0);
 const otherChar = (c) => (c + 1 + Math.floor(Math.random() * (CHARACTERS.length - 1))) % CHARACTERS.length;
+const randomChar = () => Math.floor(Math.random() * CHARACTERS.length);
 
 function openSelect(mode) {
   pendingMode = mode;
   ui.setMenuStatus('');
-  ui.setDifficulty(difficulty, mode === 'solo');
+  // Modes with bots (solo, 2v2, a host's empty seats) pick their difficulty.
+  ui.setDifficulty(difficulty, mode === 'solo' || mode === 'team' || mode === 'host');
   ui.setDummy(dummyMode, mode === 'training');
   ui.showScreen('select');
   document.querySelector(`.char-card[data-char="${myChar}"]`)?.focus();
@@ -175,6 +177,7 @@ function pickCharacter(btn) {
   const mode = pendingMode;
   pendingMode = null;
   if (mode === 'solo') startSolo();
+  else if (mode === 'team') startTeamSolo();
   else if (mode === 'training') startTraining();
   else if (mode === 'host') openHostLobby();
   else if (mode === 'join') openJoinLobby();
@@ -185,6 +188,21 @@ function startSolo() {
   session = createLocalSession(
     [myChar, otherChar(myChar)],
     (state) => [keyboard.sample(), bot.think(state, TICK)],
+  );
+  session.pausable = true;
+  session.localIndex = 0;
+  enterFight();
+}
+
+/** 2v2 against bots: you and a bot teammate against two bots. */
+function startTeamSolo() {
+  const chars = [myChar, randomChar(), randomChar(), randomChar()];
+  const bots = chars.map((_, i) => (i === 0 ? null : createBot(i, difficulty)));
+  session = createLocalSession(
+    chars,
+    (state) => state.fighters.map((_, i) => (i === 0 ? keyboard.sample() : bots[i].think(state, TICK))),
+    undefined,
+    { teams: defaultTeams(4), names: chars.map((c, i) => (i === 0 ? CHARACTERS[c].name : `BOT ${CHARACTERS[c].name}`)) },
   );
   session.pausable = true;
   session.localIndex = 0;
@@ -226,40 +244,68 @@ function startTraining() {
 
 // ---- P2P host: authoritative simulation + snapshot broadcast -------------
 
-function startHost(link, room, chars) {
+/**
+ * `setup` is { chars, teams, names, hostIndex, clients: [{ index, link }] }.
+ * Fighters that are neither the host nor a client are played by bots, and
+ * a client who leaves mid-match is replaced by one.
+ */
+function startHost(room, setup) {
   // Client inputs arrive numbered, one per client tick, and are applied one
   // per host tick; the last applied number is echoed back for prediction.
-  const remote = createInputQueue();
+  const remotes = new Map(setup.clients.map(({ index, link }) => [index, { link, queue: createInputQueue() }]));
+  const bots = new Map();
+  setup.chars.forEach((_, i) => {
+    if (i !== setup.hostIndex && !remotes.has(i)) bots.set(i, createBot(i, difficulty));
+  });
+
+  const inputFor = (state, i) => {
+    if (i === setup.hostIndex) return playerInput();
+    const remote = remotes.get(i);
+    if (remote) return remote.queue.take();
+    return bots.get(i)?.think(state, TICK) ?? { ...EMPTY_INPUT };
+  };
 
   // Tick counter survives rematches so client-side time stays monotonic.
   let tick = 0;
   let outbox = [];
   const local = createLocalSession(
-    chars,
-    () => [playerInput(), remote.take()],
+    setup.chars,
+    (state) => state.fighters.map((_, i) => inputFor(state, i)),
     (state, events) => {
       tick++;
       outbox.push(...events);
       if (tick % NET.snapshotEvery === 0) {
-        link.send(encodeSnapshot(state, tick, outbox, remote.ack));
+        // Each client gets its own packet: its fighter's full state and ack.
+        for (const [i, r] of remotes) r.link.send(encodeSnapshot(state, tick, outbox, r.queue.ack, i));
         outbox = [];
       }
     },
+    { teams: setup.teams, names: setup.names },
   );
   // Simulation is driven by the worker clock; rAF only renders (see createTicker).
   const ticker = createTicker(local.advance, 8);
 
   session = {
     canRematch: true,
-    localIndex: 0,
+    localIndex: setup.hostIndex,
     update() {
-      ui.setNetStatus(`Ping: ${Math.round(link.rtt)} ms`);
+      const pings = [...remotes.values()].map((r) => Math.round(r.link.rtt));
+      ui.setNetStatus(pings.length ? `Ping: ${pings.join(' / ')} ms` : '');
       return local.view();
     },
     rematch: local.rematch,
-    // The client is untrusted: the queue validates every packet.
-    onData(msg) {
-      if (msg.t === 'in') remote.push(msg);
+    // Clients are untrusted: the queue validates every packet.
+    onData(link, msg) {
+      if (msg.t !== 'in') return;
+      for (const r of remotes.values()) if (r.link === link) r.queue.push(msg);
+    },
+    onLeave(link) {
+      for (const [i, r] of remotes) {
+        if (r.link !== link) continue;
+        remotes.delete(i);
+        bots.set(i, createBot(i, difficulty));
+        ui.showHint(`${setup.names[i]} ayrıldı, yerine bot geçti`, 3000);
+      }
     },
     dispose: () => {
       ticker.stop();
@@ -271,14 +317,14 @@ function startHost(link, room, chars) {
 
 // ---- P2P client: send inputs, render interpolated host state --------------
 
-function startClient(link, room) {
+function startClient(link, room, index) {
   const interp = createInterpolator();
   const predictor = createPredictor();
   let acc = 0;
 
   session = {
     canRematch: false,
-    localIndex: 1,
+    localIndex: index,
     update(dt) {
       // Fixed-tick input: each tick is numbered, sent, and predicted locally
       // so our own fighter reacts without waiting for the host.
@@ -300,12 +346,12 @@ function startClient(link, room) {
         frameState.stale,
       );
 
-      // Our fighter (index 1) is drawn from the prediction, the opponent
-      // from the interpolated host state.
+      // Our fighter is drawn from the prediction, everyone else from the
+      // interpolated host state.
       const predicted = predictor.view(dt);
-      if (predicted) {
-        frameState.state.fighters[1] = predicted.fighter;
-        frameState.positions[1] = { x: predicted.x, y: predicted.y };
+      if (predicted && frameState.state.fighters[index]) {
+        frameState.state.fighters[index] = predicted.fighter;
+        frameState.positions[index] = { x: predicted.x, y: predicted.y };
       }
       return frameState;
     },
@@ -320,69 +366,181 @@ function startClient(link, room) {
   enterFight();
 }
 
-// ---- Lobby ----------------------------------------------------------------
+// ---- Room lobby -----------------------------------------------------------
+//
+// The host keeps the lobby: { size: 2 | 4, players: [{ id, name, char, team, link }] }.
+// Player 0 is the host; clients get the lowest free id. Everyone starts in
+// the middle (team -1) and picks a side; whoever is still in the middle when
+// the host starts is placed at random, and empty 2v2 seats get bots.
+//
+// Messages: client -> host { t: 'hello', char } and { t: 'team', team };
+// host -> client { t: 'lobby', size, you, players } and { t: 'start', index }.
 
 /** Pending hostRoom/joinRoom handle while in a lobby screen. */
 let pendingRoom = null;
-/** Host-side handler for the client's { t: 'hello', char } before the match starts. */
-let awaitingHello = null;
-const HELLO_TIMEOUT_MS = 3000;
+/** Host-side lobby, or null. */
+let lobby = null;
+/** Client-side: the link to the host while waiting in the lobby. */
+let lobbyLink = null;
+
+const MAX_CLIENTS = 3;
 
 const CLOSE_TEXT = {
-  left: 'Rakip oyundan ayrıldı.',
+  left: 'Oyuncu oyundan ayrıldı.',
   closed: 'Bağlantı koptu.',
   error: 'Bağlantı hatası.',
-  timeout: 'Bağlantı zaman aşımı: rakip yanıt vermiyor.',
-  full: 'Oda dolu.',
+  timeout: 'Bağlantı zaman aşımı: karşı taraf yanıt vermiyor.',
+  full: 'Oda dolu ya da maç başlamış.',
 };
 
-function netHandlers(onConnected, onError) {
-  return {
-    onConnected,
-    onError,
-    onData: (msg) => (session ? session.onData?.(msg) : awaitingHello?.(msg)),
-    onClose: (reason) => {
-      pendingRoom = null;
-      leaveToMenu(CLOSE_TEXT[reason] || 'Bağlantı kapandı.');
-    },
-  };
+const playerName = (id) => `P${id + 1}`;
+const capacity = () => lobby.size / 2;
+const teamCount = (team) => lobby.players.filter((p) => p.team === team).length;
+const publicPlayers = () => lobby.players.map(({ id, name, char, team }) => ({ id, name, char, team }));
+
+/** Show the current lobby on the host and send it to every client. */
+function broadcastLobby() {
+  if (!lobby) return;
+  const players = publicPlayers();
+  for (const p of lobby.players) p.link?.send({ t: 'lobby', size: lobby.size, you: p.id, players });
+  ui.renderLobby({ size: lobby.size, players }, 0, true, CHARACTERS);
+  const n = lobby.players.length;
+  ui.setHostStatus(n === 1 ? 'Oyuncu bekleniyor... Kodu arkadaşlarına gönder.' : `${n} oyuncu odada. Takımını seç, hazır olunca BAŞLAT.`);
+}
+
+function setTeam(player, team) {
+  if (team !== 0 && team !== 1) team = -1;
+  if (team !== -1 && player.team !== team && teamCount(team) >= capacity()) return false;
+  player.team = team;
+  return true;
 }
 
 function openHostLobby() {
+  lobby = { size: 4, players: [{ id: 0, name: playerName(0), char: myChar, team: -1, link: null }] };
   ui.setRoomCode('----');
+  ui.showScreen('lobby');
+  broadcastLobby();
   ui.setHostStatus('Oda kuruluyor...');
-  ui.showScreen('lobby-host');
   try {
-    const room = hostRoom({
-      ...netHandlers(
-        (link) => {
-          // Wait for the client's character pick; fall back to a random one
-          // if an older/misbehaving client never sends it.
-          ui.setHostStatus('Rakip bağlandı...');
-          // Compare against this connection's own waiter: after leaving and
-          // re-hosting, a stale timer must not start a match on a dead link.
-          const waiter = (msg) => { if (msg.t === 'hello') begin(validChar(msg.char)); };
-          const begin = (char) => {
-            if (awaitingHello !== waiter) return;
-            awaitingHello = null;
-            clearTimeout(timer);
-            pendingRoom = null;
-            startHost(link, room, [myChar, char]);
-          };
-          awaitingHello = waiter;
-          const timer = setTimeout(() => begin(otherChar(myChar)), HELLO_TIMEOUT_MS);
-        },
-        (text) => { pendingRoom = null; ui.setHostStatus(text); },
-      ),
+    pendingRoom = hostRoom({
       onCode: (code) => {
         ui.setRoomCode(code);
-        ui.setHostStatus('Rakip bekleniyor... Kodu arkadaşına gönder.');
+        broadcastLobby();
       },
-    });
-    pendingRoom = room;
+      onConnected(link) {
+        if (!lobby) return link.close();
+        const used = new Set(lobby.players.map((p) => p.id));
+        const id = [1, 2, 3].find((i) => !used.has(i));
+        // Character is replaced by the client's own pick when its hello arrives.
+        lobby.players.push({ id, name: playerName(id), char: randomChar(), team: -1, link });
+        broadcastLobby();
+      },
+      onData(link, msg) {
+        if (session) return session.onData?.(link, msg);
+        const player = lobby?.players.find((p) => p.link === link);
+        if (!player) return;
+        if (msg.t === 'hello') player.char = validChar(msg.char);
+        else if (msg.t === 'team') setTeam(player, msg.team);
+        broadcastLobby();
+      },
+      onClose(link) {
+        if (session) return session.onLeave?.(link);
+        if (!lobby) return;
+        lobby.players = lobby.players.filter((p) => p.link !== link);
+        broadcastLobby();
+      },
+      onError: (text) => ui.setHostStatus(text),
+    }, MAX_CLIENTS);
   } catch (err) {
     ui.setHostStatus(err.message);
   }
+}
+
+function lobbyTeam(btn) {
+  const team = Number(btn?.dataset.team);
+  if (lobbyLink) {
+    lobbyLink.send({ t: 'team', team });
+  } else if (lobby) {
+    if (!setTeam(lobby.players[0], team)) ui.setHostStatus('O takım dolu.');
+    else broadcastLobby();
+  }
+}
+
+function lobbyMode(btn) {
+  const size = Number(btn?.dataset.size);
+  if (!lobby || (size !== 2 && size !== 4)) return;
+  lobby.size = size;
+  // Shrinking to 1v1: anyone beyond one per side goes back to the middle.
+  for (const team of [0, 1]) {
+    lobby.players.filter((p) => p.team === team).slice(capacity()).forEach((p) => { p.team = -1; });
+  }
+  broadcastLobby();
+}
+
+function shuffle(list) {
+  for (let i = list.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [list[i], list[j]] = [list[j], list[i]];
+  }
+  return list;
+}
+
+/** Put players still in the middle into random free seats (balanced first). */
+function seatMiddle() {
+  for (const p of shuffle(lobby.players.filter((q) => q.team === -1))) {
+    const open = [0, 1].filter((t) => teamCount(t) < capacity());
+    if (!open.length) break;
+    const fewest = Math.min(...open.map(teamCount));
+    const choices = open.filter((t) => teamCount(t) === fewest);
+    p.team = choices[Math.floor(Math.random() * choices.length)];
+  }
+}
+
+function lobbyRandom() {
+  if (!lobby) return;
+  lobby.players.forEach((p) => { p.team = -1; });
+  seatMiddle();
+  broadcastLobby();
+}
+
+function lobbyStart() {
+  if (!lobby) return;
+  if (lobby.size === 2 && lobby.players.length !== 2) {
+    ui.setHostStatus('1v1 için odada tam 2 oyuncu olmalı.');
+    return;
+  }
+  if (lobby.players.length > lobby.size) {
+    ui.setHostStatus('Oyuncu sayısı bu mod için fazla, 2v2 seç.');
+    return;
+  }
+  seatMiddle();
+
+  // Fighter order: left team then right team; free 2v2 seats get bots.
+  const chars = [];
+  const teams = [];
+  const names = [];
+  const clients = [];
+  let hostIndex = 0;
+  for (const team of [0, 1]) {
+    const members = lobby.players.filter((p) => p.team === team).sort((a, b) => a.id - b.id);
+    for (let seat = 0; seat < capacity(); seat++) {
+      const p = members[seat];
+      const index = chars.length;
+      const char = p ? p.char : randomChar();
+      chars.push(char);
+      teams.push(team);
+      names.push(p ? `${p.name} ${CHARACTERS[char].name}` : `BOT ${CHARACTERS[char].name}`);
+      if (p?.id === 0) hostIndex = index;
+      else if (p) clients.push({ index, link: p.link });
+    }
+  }
+
+  pendingRoom.locked = true;
+  for (const { index, link } of clients) link.send({ t: 'start', index });
+  const room = pendingRoom;
+  pendingRoom = null;
+  lobby = null;
+  startHost(room, { chars, teams, names, hostIndex, clients });
 }
 
 function connectToRoom() {
@@ -394,14 +552,33 @@ function connectToRoom() {
   }
   ui.setJoinStatus('Bağlanıyor...');
   try {
-    const room = joinRoom(code, netHandlers(
-      (link) => {
-        pendingRoom = null;
+    const room = joinRoom(code, {
+      onConnected(link) {
+        lobbyLink = link;
         link.send({ t: 'hello', char: myChar });
-        startClient(link, room);
+        ui.setRoomCode(code);
+        ui.setHostStatus('Bağlandı. Host\'un başlatması bekleniyor...');
+        ui.showScreen('lobby');
       },
-      (text) => { pendingRoom = null; ui.setJoinStatus(text); },
-    ));
+      onError: (text) => { pendingRoom = null; ui.setJoinStatus(text); },
+      onData(msg) {
+        if (session) return session.onData?.(msg);
+        if (msg.t === 'lobby' && Array.isArray(msg.players)) {
+          const players = msg.players.slice(0, MAX_CLIENTS + 1).map((p) => ({
+            id: Number(p?.id) | 0, name: String(p?.name ?? '').slice(0, 8), char: validChar(p?.char),
+            team: p?.team === 0 || p?.team === 1 ? p.team : -1,
+          }));
+          ui.renderLobby({ size: msg.size === 2 ? 2 : 4, players }, Number(msg.you) | 0, false, CHARACTERS);
+          ui.setHostStatus(`${players.length} oyuncu odada. Host'un başlatması bekleniyor...`);
+        } else if (msg.t === 'start' && Number.isInteger(msg.index) && msg.index >= 0 && msg.index < MAX_FIGHTERS) {
+          pendingRoom = null;
+          const link = lobbyLink;
+          lobbyLink = null;
+          startClient(link, room, msg.index);
+        }
+      },
+      onClose: (reason) => leaveToMenu(CLOSE_TEXT[reason] || 'Bağlantı kapandı.'),
+    });
     pendingRoom = room;
   } catch (err) {
     ui.setJoinStatus(err.message);
@@ -445,7 +622,8 @@ function leaveToMenu(message = '') {
   effects.clearPieces();
   paused = false;
   pendingMode = null;
-  awaitingHello = null;
+  lobby = null;
+  lobbyLink = null;
   pendingRoom?.cancel();
   pendingRoom = null;
   session?.dispose?.();
@@ -469,10 +647,20 @@ const hud = {
     apply(value);
   },
   sync(state) {
-    const [a, b] = state.fighters;
-    this.set('names', state.names.join('|'), () => ui.setNames(state.names[0], state.names[1]));
-    this.set('hp0', a.hp, (v) => ui.setHealth(0, v, MATCH.maxHp));
-    this.set('hp1', b.hp, (v) => ui.setHealth(1, v, MATCH.maxHp));
+    const n = state.fighters.length;
+    const teams = state.teams || defaultTeams(n);
+    const local = session?.localIndex ?? 0;
+    // Rebuilding the rows invalidates every cached HUD value.
+    const layout = `${state.names.join('|')}#${teams.join('')}#${local}`;
+    if (this.last.layout !== layout) {
+      this.last = { layout };
+      ui.setupFighters(state.fighters.map((_, i) => ({ name: state.names[i], team: teams[i], local: i === local })));
+    }
+    state.fighters.forEach((f, i) => {
+      this.set(`hp${i}`, f.hp, (v) => ui.setHealth(i, v, MATCH.maxHp));
+      const charge = Math.round((1 - (f.cooldown || 0) / ATTACKS.special.cooldown) * 20) / 20;
+      this.set(`sp${i}`, charge, (v) => ui.setSpecial(i, v));
+    });
     this.set('round', state.training ? 0 : state.round, ui.setRound);
     this.set('timer', state.training ? null : Math.ceil(state.timer), ui.setTimer);
     this.set('wins0', state.wins[0], (v) => ui.setWins(0, v));
@@ -480,7 +668,7 @@ const hud = {
     this.set('phase', state.phase, (phase) => {
       if (phase === 'over') {
         paused = false;
-        const name = state.names[state.winner];
+        const name = n === 2 ? state.names[state.winner] : TEAM_NAMES[state.winner];
         const score = `${state.wins[0]} - ${state.wins[1]}`;
         const canRematch = !!session?.canRematch;
         ui.showResult(`${name} KAZANDI`, canRematch ? score : `${score} · Rövanşı host başlatabilir`, canRematch);
@@ -497,6 +685,7 @@ const hud = {
  */
 function handleEvents(events) {
   const num = (v) => (Number.isFinite(v) ? v : 0);
+  const fighterIndex = (v) => (Number.isInteger(v) && v >= 0 && v < MAX_FIGHTERS ? v : -1);
   for (const e of events) {
     if (e.type === 'announce') {
       const text = String(e.text ?? '').slice(0, 32);
@@ -509,7 +698,7 @@ function handleEvents(events) {
     } else if (e.type === 'hit') {
       sound.play(e.throw ? 'grab' : e.blocked ? 'block' : e.heavy ? 'heavy' : 'hit');
       effects.spark(num(e.x), num(e.y), { blocked: !!e.blocked, heavy: !!e.heavy });
-      if (!e.blocked) views[e.target]?.flash();
+      if (!e.blocked) views[fighterIndex(e.target)]?.flash();
       stage.shake(e.blocked ? 0.06 : e.heavy ? 0.28 : 0.14);
       if (e.throw) stage.punchZoom(0.6);
     } else if (e.type === 'slam') {
@@ -521,13 +710,16 @@ function handleEvents(events) {
     } else if (e.type === 'damage') {
       if (e.target === 1) ui.setTrainingInfo(`HASAR ${Number(e.total) | 0}`);
     } else if (e.type === 'combo') {
-      if (e.attacker === 0 || e.attacker === 1) ui.showCombo(e.attacker, Number(e.count) | 0);
+      // Shown on the attacker's team side.
+      const side = e.team ?? e.attacker;
+      if (side === 0 || side === 1) ui.showCombo(side, Number(e.count) | 0);
     } else if (e.type === 'fireball') {
       sound.play('fireball');
     } else if (e.type === 'ko') {
       sound.play('ko');
-      stage.shake(0.5);
-      stage.punchZoom(1.2);
+      // A fighter dropping in 2v2 (has a target) is a smaller moment than a round K.O.
+      stage.shake(e.target === undefined ? 0.5 : 0.3);
+      if (e.target === undefined) stage.punchZoom(1.2);
     } else if (e.type === 'over') {
       sound.play('victory');
     } else if (e.type === 'finish') {
@@ -536,7 +728,7 @@ function handleEvents(events) {
     } else if (e.type === 'fatality') {
       sound.play('fatality');
       stage.shake(0.8);
-      const target = e.target === 0 || e.target === 1 ? e.target : 1;
+      const target = Math.max(0, fighterIndex(e.target));
       effects.explode(num(e.x), num(e.y), shownColors[target]);
       effects.dust(num(e.x), 1.6);
       stage.punchZoom(1.5);
@@ -549,6 +741,7 @@ function handleEvents(events) {
 // ---------------------------------------------------------------------------
 ui.bindActions({
   solo: () => openSelect('solo'),
+  team: () => openSelect('team'),
   host: () => openSelect('host'),
   join: () => openSelect('join'),
   pick: pickCharacter,
@@ -556,6 +749,10 @@ ui.bindActions({
   dummy: setDummy,
   training: () => openSelect('training'),
   connect: connectToRoom,
+  'lobby-team': lobbyTeam,
+  'lobby-mode': lobbyMode,
+  'lobby-random': lobbyRandom,
+  'lobby-start': lobbyStart,
   pause,
   resume,
   // Help opens from the menu or the pause screen and returns to it.
@@ -598,21 +795,36 @@ document.getElementById('join-code').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') connectToRoom();
 });
 
-const darken = (hex, k) =>
+const scale = (hex, k) =>
   (Math.round(((hex >> 16) & 255) * k) << 16) | (Math.round(((hex >> 8) & 255) * k) << 8) | Math.round((hex & 255) * k);
+const lighten = (hex, k) => {
+  const ch = (shift) => { const c = (hex >> shift) & 255; return Math.round(c + (255 - c) * k); };
+  return (ch(16) << 16) | (ch(8) << 8) | ch(0);
+};
+const TEAM_COLORS = [0xff3b3b, 0x3a8bff];
 
-let shownChars = '';
-const shownColors = [CHARACTERS[0].color, CHARACTERS[1].color];
-function applyCharacterColors(chars) {
-  const key = chars.join(',');
-  if (key === shownChars) return;
-  shownChars = key;
-  const mirror = chars[0] === chars[1];
+let shownKey = '';
+const shownColors = views.map((_, i) => CHARACTERS[i % CHARACTERS.length].color);
+/**
+ * Colour the fighters by character. Repeated characters get darker/lighter
+ * variants so they stay distinguishable; team fights add team rings and an
+ * arrow over the local player.
+ */
+function applyCharacterColors(chars, teams, local) {
+  const key = `${chars.join(',')}|${teams.join('')}|${local}`;
+  if (key === shownKey) return;
+  shownKey = key;
+  const teamFight = chars.length > 2;
+  const seen = {};
+  views.forEach((v, i) => v.setEnabled(i < chars.length));
   chars.forEach((c, i) => {
     let color = (CHARACTERS[c] || CHARACTERS[0]).color;
-    // Mirror match: darken player 2 so the fighters stay distinguishable.
-    if (mirror && i === 1) color = darken(color, 0.5);
+    const copy = (seen[c] = (seen[c] || 0) + 1);
+    if (copy === 2) color = scale(color, 0.5);
+    else if (copy === 3) color = lighten(color, 0.45);
+    else if (copy === 4) color = scale(color, 0.28);
     views[i].setColor(color);
+    views[i].setMarker(teamFight ? TEAM_COLORS[teams[i]] : null, teamFight && i === local);
     shownColors[i] = color;
     effects.setProjectileColor(i, color);
   });
@@ -638,22 +850,23 @@ function frame(now) {
   if (session && !(paused && session.pausable)) {
     const { state, events, positions } = session.update(dt);
     if (state) {
-      applyCharacterColors(state.chars || [0, 1]);
+      const chars = state.chars || [0, 1];
+      applyCharacterColors(chars, state.teams || defaultTeams(chars.length), session.localIndex ?? 0);
       stage.setArena(state.arena ?? 0);
-      state.fighters.forEach((f, i) => views[i].update(f, dt, positions[i].x, positions[i].y));
-      stage.updateCamera(dt, positions[0].x, positions[1].x);
+      state.fighters.forEach((f, i) => views[i]?.update(f, dt, positions[i].x, positions[i].y));
+      stage.updateCamera(dt, positions);
       effects.syncProjectiles(state.projectiles || [], dt);
       hud.sync(state);
       handleEvents(events);
     }
   } else if (!session) {
-    applyCharacterColors([0, 1]);
+    applyCharacterColors([0, 1], [0, 1], -1);
     stage.setArena(0);
     effects.syncProjectiles([], dt);
     // Attract mode: idle fighters and a slow camera sway behind the menu.
     menuFighters.forEach((f, i) => views[i].update(f, dt, f.x, f.y));
     const sway = Math.sin(now / 1000 * 0.3) * 3;
-    stage.updateCamera(dt, sway - 1.6, sway + 1.6);
+    stage.updateCamera(dt, [{ x: sway - 1.6, y: 0 }, { x: sway + 1.6, y: 0 }]);
   }
 
   effects.update(dt);

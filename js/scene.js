@@ -55,6 +55,7 @@ export function createStage(container) {
     arena.wall.map = textures[idx].wall;
     arena.floor.needsUpdate = arena.wall.needsUpdate = true;
     arena.pillar.color.setHex(a.pillar);
+    arena.lip.emissive.setHex(a.torch);
     arena.banners.forEach((m, j) => {
       m.color.setHex(a.banners[j]);
       m.emissive.setHex(a.banners[j]);
@@ -76,18 +77,29 @@ export function createStage(container) {
   let zoomKick = 0; // metres pushed toward the action, decays back to 0
 
   /**
-   * Side-view tracking: centre on the midpoint between the fighters and
-   * pull back as they separate so both always stay in frame.
+   * Side-view tracking: centre on the fighters' bounding box and pull back
+   * as they spread out (sideways or up onto platforms) so all stay in frame.
+   * `points` are the fighters' feet positions [{ x, y }].
    */
-  function updateCamera(dt, xA = 0, xB = 0) {
-    const midX = (xA + xB) / 2;
-    const spread = Math.abs(xA - xB);
+  function updateCamera(dt, points) {
+    const xs = points.map((p) => p.x);
+    const ys = points.map((p) => p.y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    const midX = (minX + maxX) / 2;
+    // Raise the view toward fighters up on platforms, but keep the floor in shot.
+    const lift = Math.min((minY + maxY) / 2, 1.8);
     const dist = THREE.MathUtils.clamp(
-      CAMERA.minDistance + spread * 0.6, CAMERA.minDistance, CAMERA.maxDistance
+      CAMERA.minDistance + Math.max((maxX - minX) * 0.6, (maxY - minY) * 1.4),
+      CAMERA.minDistance, CAMERA.maxDistance,
     );
     const k = 1 - Math.exp(-CAMERA.followLerp * dt); // frame-rate independent lerp
     camTarget.x += (midX - camTarget.x) * k;
+    camTarget.y += (1.4 + lift - camTarget.y) * k;
     camBase.x += (midX - camBase.x) * k;
+    camBase.y += (CAMERA.height + lift - camBase.y) * k;
     camBase.z += (dist - camBase.z) * k;
 
     // Shake is applied on top of the smoothed base so it never accumulates.
@@ -198,7 +210,41 @@ function addArena(scene) {
     return mat;
   });
 
-  return { floor: floor.material, wall: wall.material, pillar: pillarMat, torches, banners };
+  // One-way platforms: stone slabs with a glowing front lip so their edge
+  // reads at a glance. Side slabs stand on posts, the top one hangs on chains.
+  const lipMat = new THREE.MeshStandardMaterial({ color: 0xffb060, emissive: 0xff8a2a, emissiveIntensity: 0.6, roughness: 0.5 });
+  const SLAB = 0.28;
+  const DEPTH = 1.8;
+  for (const p of ARENA.platforms) {
+    const w = p.x1 - p.x0;
+    const cx = (p.x0 + p.x1) / 2;
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(w, SLAB, DEPTH), pillarMat);
+    slab.position.set(cx, p.y - SLAB / 2, 0);
+    slab.castShadow = true;
+    slab.receiveShadow = true;
+    scene.add(slab);
+
+    const lip = new THREE.Mesh(new THREE.BoxGeometry(w, 0.05, 0.05), lipMat);
+    lip.position.set(cx, p.y - 0.03, DEPTH / 2);
+    scene.add(lip);
+
+    const posts = p.y < 2 ? [p.x0 + 0.25, p.x1 - 0.25] : [];
+    for (const x of posts) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.22, p.y - SLAB, 0.22), pillarMat);
+      post.position.set(x, (p.y - SLAB) / 2, -DEPTH / 2 + 0.2);
+      post.castShadow = true;
+      scene.add(post);
+    }
+    if (!posts.length) {
+      for (const x of [p.x0 + 0.3, p.x1 - 0.3]) {
+        const chain = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 6, 6), lipMat);
+        chain.position.set(x, p.y + 3, -DEPTH / 2 + 0.2);
+        scene.add(chain);
+      }
+    }
+  }
+
+  return { floor: floor.material, wall: wall.material, pillar: pillarMat, torches, banners, lip: lipMat };
 }
 
 // ---------------------------------------------------------------------------

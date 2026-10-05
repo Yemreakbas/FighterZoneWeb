@@ -2,7 +2,7 @@
 
 const $ = (id) => document.getElementById(id);
 
-const SCREENS = ['menu', 'select', 'lobby-host', 'lobby-join', 'result', 'pause', 'help'];
+const SCREENS = ['menu', 'select', 'lobby', 'lobby-join', 'result', 'pause', 'help'];
 
 // Help opened from the pause menu keeps the HUD visible underneath.
 let helpOverFight = false;
@@ -45,16 +45,42 @@ export function setHostStatus(text) { $('host-status').textContent = text; }
 export function setJoinStatus(text) { $('join-status').textContent = text; }
 export function getJoinCode() { return $('join-code').value.trim(); }
 
-export function setNames(p1, p2) {
-  $('p1-name').textContent = p1;
-  $('p2-name').textContent = p2;
+const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+
+/**
+ * Build the HUD rows: `fighters` is [{ name, team, local }] in fighter order.
+ * Each team's column lists its members; team fights use compact rows.
+ */
+export function setupFighters(fighters) {
+  const compact = fighters.length > 2;
+  for (const team of [0, 1]) {
+    $(`team-${team}`).innerHTML = fighters
+      .map((f, i) => ({ ...f, i }))
+      .filter((f) => f.team === team)
+      .map((f) => `
+        <div class="frow${compact ? ' compact' : ''}${f.local && compact ? ' me' : ''}" id="row-${f.i}">
+          <span class="fighter-name">${escapeHtml(f.name)}${f.local && compact ? ' (SEN)' : ''}</span>
+          <div class="health"><div class="health-fill" id="hp-${f.i}"></div></div>
+          <div class="special" title="Özel hareket"><div class="special-fill" id="sp-${f.i}"></div></div>
+        </div>`).join('');
+  }
 }
 
 export function setHealth(index, hp, maxHp) {
-  const el = $(index === 0 ? 'p1-health' : 'p2-health');
+  const el = $(`hp-${index}`);
+  if (!el) return;
   const pct = Math.max(0, Math.min(1, hp / maxHp)) * 100;
   el.style.width = `${pct}%`;
   el.classList.toggle('low', pct <= 25);
+  $(`row-${index}`)?.classList.toggle('down', hp <= 0);
+}
+
+/** Special-move charge, 0 (just used) to 1 (ready). */
+export function setSpecial(index, charge) {
+  const el = $(`sp-${index}`);
+  if (!el) return;
+  el.style.width = `${Math.round(charge * 100)}%`;
+  el.classList.toggle('ready', charge >= 1);
 }
 
 export function setRound(n) { $('round-label').textContent = n === 0 ? 'ANTRENMAN' : `ROUND ${n}`; }
@@ -133,6 +159,36 @@ export function setDummy(mode, visible) {
 export function setTrainingInfo(text) {
   $('train-info').classList.toggle('hidden', text === null);
   $('train-info').textContent = text ?? '';
+}
+
+/**
+ * Draw the room lobby. `lobby` is { size, players: [{ id, name, char, team }] },
+ * `you` our player id, `isHost` shows the host controls. Team columns show
+ * free slots; in 2v2 those are filled by bots when the match starts.
+ */
+export function renderLobby(lobby, you, isHost, characters) {
+  const cap = lobby.size / 2;
+  const chip = (p) => {
+    const c = characters[p.char] || characters[0];
+    const tags = [p.id === 0 ? 'HOST' : '', p.id === you ? 'SEN' : ''].filter(Boolean).join(' · ');
+    return `<div class="chip${p.id === you ? ' me' : ''}" style="--char-color:#${c.color.toString(16).padStart(6, '0')}">
+      <b>${escapeHtml(p.name)}</b><span>${escapeHtml(c.name)}${tags ? ` · ${tags}` : ''}</span></div>`;
+  };
+  const free = (n) => Array.from({ length: n }, () =>
+    `<div class="chip empty">${lobby.size === 4 ? 'BOŞ · BOT GELİR' : 'BOŞ'}</div>`).join('');
+  for (const team of [0, 1]) {
+    const members = lobby.players.filter((p) => p.team === team);
+    $(`slots-${team}`).innerHTML = members.map(chip).join('') + free(Math.max(0, cap - members.length));
+  }
+  $('slots-mid').innerHTML = lobby.players.filter((p) => p.team !== 0 && p.team !== 1).map(chip).join('')
+    || '<div class="chip empty">—</div>';
+  $('lobby').classList.toggle('is-host', isHost);
+  for (const btn of $('lobby-mode').querySelectorAll('.seg')) {
+    const on = Number(btn.dataset.size) === lobby.size;
+    btn.classList.toggle('on', on);
+    btn.setAttribute('aria-pressed', String(on));
+    btn.disabled = !isHost;
+  }
 }
 
 /** Routes `data-action` button clicks to a handler map (handler gets the button). */

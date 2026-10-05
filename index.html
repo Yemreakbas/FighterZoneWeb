@@ -37,9 +37,9 @@
   <!-- ===== HUD (in-fight overlay) ===== -->
   <div id="hud" class="hidden">
     <div class="hud-bar">
+      <!-- One row per fighter (name, health, special charge), built by ui.setupFighters. -->
       <div class="fighter-info left">
-        <span class="fighter-name" id="p1-name">OYUNCU 1</span>
-        <div class="health"><div class="health-fill" id="p1-health"></div></div>
+        <div class="team-rows" id="team-0"></div>
         <div class="wins" id="p1-wins"><i></i><i></i></div>
       </div>
       <div class="round-info">
@@ -47,8 +47,7 @@
         <span id="timer">99</span>
       </div>
       <div class="fighter-info right">
-        <span class="fighter-name" id="p2-name">OYUNCU 2</span>
-        <div class="health"><div class="health-fill" id="p2-health"></div></div>
+        <div class="team-rows" id="team-1"></div>
         <div class="wins" id="p2-wins"><i></i><i></i></div>
       </div>
     </div>
@@ -83,6 +82,7 @@
     <div class="panel">
       <h1 class="logo">FIGHTER<span>ZONE</span></h1>
       <button class="btn" data-action="solo">TEK OYUNCULU (BOT)</button>
+      <button class="btn" data-action="team">TAKIM MAÇI 2v2 (BOT)</button>
       <button class="btn" data-action="training">ANTRENMAN</button>
       <button class="btn" data-action="host">ODA KUR (HOST)</button>
       <button class="btn" data-action="join">ODAYA KATIL (JOIN)</button>
@@ -114,13 +114,41 @@
     </div>
   </div>
 
-  <!-- ===== Host lobby ===== -->
-  <div id="lobby-host" class="screen hidden">
-    <div class="panel">
-      <h2>Oda Kodu</h2>
+  <!-- ===== Room lobby (host and joined players) =====
+       Everyone starts in the middle and picks a side; players left in the
+       middle are placed at random when the host starts. Empty 2v2 slots get bots. -->
+  <div id="lobby" class="screen hidden">
+    <div class="panel wide">
+      <h2>ODA KODU</h2>
       <div class="room-code" id="room-code">----</div>
-      <p class="status" id="host-status">Rakip bekleniyor...</p>
-      <button class="btn secondary" data-action="back">GERİ</button>
+      <div class="difficulty" id="lobby-mode" role="group" aria-label="Maç türü">
+        <span class="label">MOD</span>
+        <button class="seg" data-action="lobby-mode" data-size="2">1v1</button>
+        <button class="seg" data-action="lobby-mode" data-size="4">2v2</button>
+      </div>
+      <div class="teams">
+        <div class="team-col red">
+          <h3>KIRMIZI</h3>
+          <div class="slots" id="slots-0"></div>
+          <button class="btn small" data-action="lobby-team" data-team="0">KIRMIZIYA GEÇ</button>
+        </div>
+        <div class="team-col mid">
+          <h3>ORTA</h3>
+          <div class="slots" id="slots-mid"></div>
+          <button class="btn small secondary" data-action="lobby-team" data-team="-1">ORTAYA DÖN</button>
+        </div>
+        <div class="team-col blue">
+          <h3>MAVİ</h3>
+          <div class="slots" id="slots-1"></div>
+          <button class="btn small" data-action="lobby-team" data-team="1">MAVİYE GEÇ</button>
+        </div>
+      </div>
+      <p class="status" id="host-status">Oda kuruluyor...</p>
+      <div class="lobby-actions host-only">
+        <button class="btn secondary" data-action="lobby-random">RASTGELE DAĞIT</button>
+        <button class="btn" data-action="lobby-start" id="lobby-start">BAŞLAT</button>
+      </div>
+      <button class="btn secondary" data-action="back">ÇIK</button>
     </div>
   </div>
 
@@ -163,6 +191,9 @@
         <li>Ekranda oyuncu başına tek <b>enerji topu</b> olabilir. İki top çarpışırsa birbirini yok eder.</li>
         <li>Maçı bitiren K.O.'dan sonra <b>FINISH HIM!</b> gelir. 4 saniye içinde özel hareketle vurursan <b>FATALITY</b>.</li>
         <li>İki round alan maçı kazanır.</li>
+        <li><b>Platformlara</b> zıplayarak (<kbd>W</kbd>) çık, <b>aşağı + zıpla</b> ile in. Ortadaki üst platforma yan platformlardan ulaşılır.</li>
+        <li><b>Özel hareket</b> kullanınca 3 saniye dolması gerekir; can barının altındaki mavi çubuk dolunca hazırdır.</li>
+        <li><b>2v2</b>'de takım arkadaşına vuramazsın. Canı biten yere düşer, takımın hepsi düşünce round biter.</li>
       </ul>
       <button class="btn secondary" data-action="help-back">GERİ</button>
     </div>

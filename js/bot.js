@@ -1,5 +1,6 @@
-import { ATTACKS, BOT_DIFFICULTIES, BOT_LEVELS, DEFAULT_DIFFICULTY } from './config.js';
+import { ARENA, ATTACKS, BOT_DIFFICULTIES, BOT_LEVELS, DEFAULT_DIFFICULTY } from './config.js';
 import { EMPTY_INPUT, isAttacking, isSweep } from './fighter.js';
+import { defaultTeams, targetOf } from './game.js';
 
 // AI opponent. Produces the same input shape as a human player, so it plugs
 // into the authoritative simulation exactly like a remote/local controller.
@@ -10,6 +11,23 @@ const KICK_RANGE = ATTACKS.kick.reach - 0.1;
 const THROW_RANGE = ATTACKS.throw.reach - 0.1;
 // Intents the bot holds until `intentUntil` instead of re-deciding.
 const DEFENCES = new Set(['block', 'lowblock', 'crouch']);
+
+// A jump clears about 1.84 units; platforms within this rise can be climbed.
+const MAX_CLIMB = 1.7;
+
+/**
+ * Where to stand to follow `opp` onto a higher platform: under the next
+ * platform reachable from `me`'s level, preferring the one the opponent is
+ * on. Returns an x to jump straight up from, or null if none is reachable.
+ */
+function climbSpot(me, opp) {
+  const reachable = ARENA.platforms.filter((p) => p.y > me.y + 0.3 && p.y <= me.y + MAX_CLIMB);
+  if (!reachable.length) return null;
+  const centre = (p) => (p.x0 + p.x1) / 2;
+  const p = reachable.find((q) => opp.x >= q.x0 && opp.x <= q.x1)
+    || reachable.sort((a, b) => Math.abs(centre(a) - opp.x) - Math.abs(centre(b) - opp.x))[0];
+  return Math.max(p.x0 + 0.5, Math.min(p.x1 - 0.5, me.x));
+}
 
 /** BOT_LEVELS entry for a difficulty (BOT_DIFFICULTIES index) and round (1-based). */
 export function botLevel(difficulty, round) {
@@ -46,7 +64,8 @@ export function createBot(index, difficulty = DEFAULT_DIFFICULTY) {
     if (dist > KICK_RANGE) {
       // Zoning: throw a projectile from mid/long range.
       const ownOut = state.projectiles.some((p) => p.owner === index);
-      if (dist > 3.5 && !ownOut && rand() < lvl.aggression * 0.3) {
+      const ready = state.fighters[index].cooldown <= 0;
+      if (dist > 3.5 && !ownOut && ready && rand() < lvl.aggression * 0.3) {
         intent = 'hold';
         press('special');
         return;
@@ -96,7 +115,8 @@ export function createBot(index, difficulty = DEFAULT_DIFFICULTY) {
     time += dt;
     const input = { ...EMPTY_INPUT };
     const me = state.fighters[index];
-    const opp = state.fighters[1 - index];
+    const teams = state.teams || defaultTeams(state.fighters.length);
+    const opp = state.fighters[targetOf(state.fighters, teams, index)];
 
     if (state.phase === 'finish') return finish(state, me, opp, input);
     finishPlan = null;
@@ -123,8 +143,9 @@ export function createBot(index, difficulty = DEFAULT_DIFFICULTY) {
     }
 
     // Incoming projectile: duck under it or block, with the level's block odds.
-    const incoming = state.projectiles.find((p) => p.owner !== index
-      && Math.sign(me.x - p.x) === Math.sign(p.vx) && Math.abs(me.x - p.x) < 3.5);
+    const incoming = state.projectiles.find((p) => teams[p.owner] !== teams[index]
+      && Math.sign(me.x - p.x) === Math.sign(p.vx) && Math.abs(me.x - p.x) < 3.5
+      && Math.abs(p.y - me.y - 1.2) < 1.2);
     if (!incoming) {
       reactedToProjectile = false;
     } else if (!reactedToProjectile && me.grounded) {
@@ -133,6 +154,33 @@ export function createBot(index, difficulty = DEFAULT_DIFFICULTY) {
         intent = rand() < 0.5 ? 'crouch' : 'block';
         intentUntil = time + Math.abs(me.x - incoming.x) / Math.abs(incoming.vx || 9) + 0.25;
         queued = [];
+      }
+    }
+
+    // Opponent on another level: climb up after them or drop down to them.
+    if (me.grounded && opp.grounded && !(DEFENCES.has(intent) && time < intentUntil)) {
+      const dy = opp.y - me.y;
+      if (dy > 0.5) {
+        const spot = climbSpot(me, opp);
+        if (spot !== null) {
+          queued = [];
+          if (Math.abs(spot - me.x) > 0.25) input[spot > me.x ? 'right' : 'left'] = true;
+          else if (time >= nextDecision) {
+            input.jump = true;
+            nextDecision = time + lvl.reaction;
+          }
+          return input;
+        }
+      } else if (dy < -0.5) {
+        queued = [];
+        if (dist < 2.5 && time >= nextDecision) {
+          input.down = true;
+          input.jump = true;
+          nextDecision = time + lvl.reaction;
+        } else {
+          input[toward > 0 ? 'right' : 'left'] = true;
+        }
+        return input;
       }
     }
 

@@ -177,6 +177,46 @@ h2 {
   .panel { padding: 20px 18px; gap: 10px; }
 }
 
+/* ---------- Room lobby ---------- */
+.teams { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; width: 100%; }
+.team-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--panel-border);
+  border-top: 4px solid var(--team, var(--muted));
+  border-radius: 10px;
+}
+.team-col.red { --team: #ff3b3b; }
+.team-col.blue { --team: #3a8bff; }
+.team-col h3 { font: 700 15px 'Rajdhani', sans-serif; letter-spacing: 2px; color: var(--team, var(--muted)); text-align: center; }
+.slots { display: flex; flex-direction: column; gap: 6px; min-height: 96px; }
+.chip {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 8px;
+  font-size: 13px;
+  background: rgba(255, 255, 255, 0.06);
+  border-left: 4px solid var(--char-color, transparent);
+  border-radius: 6px;
+}
+.chip b { font: 10px 'Press Start 2P', monospace; }
+.chip span { color: var(--muted); }
+.chip.me { outline: 1px solid var(--accent-2); }
+.chip.empty { color: var(--muted); font-style: italic; text-align: center; border-left-color: transparent; }
+.btn.small { padding: 8px 6px; font-size: 14px; }
+.lobby-actions { display: flex; gap: 10px; width: 100%; }
+#lobby:not(.is-host) .host-only { display: none; }
+#lobby-mode .seg:disabled { cursor: default; }
+#lobby-mode .seg:disabled:not(.on) { opacity: 0.5; }
+
+@media (max-width: 560px) {
+  .teams { grid-template-columns: 1fr; }
+  .slots { min-height: 0; }
+}
+
 /* ---------- How to play ---------- */
 .panel.help { max-height: calc(100vh - 32px); overflow-y: auto; align-items: stretch; }
 .panel.help h2 { text-align: center; }
@@ -225,6 +265,25 @@ kbd {
 
 .fighter-info { flex: 1; display: flex; flex-direction: column; gap: 6px; }
 .fighter-info.right { align-items: flex-end; }
+.team-rows { width: 100%; display: flex; flex-direction: column; gap: 8px; }
+.frow { display: flex; flex-direction: column; gap: 4px; width: 100%; }
+.fighter-info.right .frow { align-items: flex-end; }
+.frow.compact .health { height: 15px; }
+.frow.compact .fighter-name { font-size: 10px; }
+.frow.me .fighter-name { color: var(--accent-2); }
+.frow.down { opacity: 0.45; }
+
+/* Special-move charge under the health bar; glows when ready. */
+.special {
+  width: 60%;
+  height: 5px;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.special-fill { height: 100%; width: 100%; background: #3aa8ff; }
+.special-fill.ready { background: #7fd0ff; box-shadow: 0 0 8px #7fd0ff; }
+.fighter-info.right .special { display: flex; justify-content: flex-end; }
 
 .fighter-name {
   font-family: 'Press Start 2P', monospace;

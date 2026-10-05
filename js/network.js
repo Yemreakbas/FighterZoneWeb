@@ -6,9 +6,12 @@ import { NET } from './config.js';
 // The host registers the peer id `NET.idPrefix + roomCode`; the prefix keeps
 // our short numeric codes from colliding with other apps on the shared broker.
 //
-// Both sides get a `Link`: { send(msg), close(), rtt }. The link runs its own
-// heartbeat (ping/pong) so a silently dropped connection is detected even
+// Both sides get a `Link`: { id, send(msg), close(), rtt }. The link runs its
+// own heartbeat (ping/pong) so a silently dropped connection is detected even
 // when WebRTC never fires a 'close' event (common when a tab is killed).
+//
+// A host accepts up to `maxClients` players (3 for a 2v2 room); one leaving
+// closes only their link, the room stays up.
 
 const MAX_ID_RETRIES = 5;
 
@@ -42,9 +45,10 @@ const errorText = (err) => ERROR_TEXT[err?.type] || `Bağlantı hatası (${err?.
 /**
  * Wrap an open DataConnection with heartbeat, safe send and a single
  * close notification. `onClose(reason)` fires once for remote/abnormal
- * closes; a local `close()` does not trigger it.
+ * closes; a local `close()` does not trigger it. A client link owns its
+ * peer and destroys it on close; host links share the room's peer.
  */
-function createLink(peer, conn, { onData, onClose }) {
+function createLink(peer, conn, { onData, onClose }, ownsPeer = true) {
   let closed = false;
   let closing = false;
   let lastRecv = performance.now();
@@ -60,7 +64,9 @@ function createLink(peer, conn, { onData, onClose }) {
     closed = true;
     clearInterval(heartbeat);
     try { conn.close(); } catch { /* already closed */ }
-    try { peer.destroy(); } catch { /* already destroyed */ }
+    if (ownsPeer) {
+      try { peer.destroy(); } catch { /* already destroyed */ }
+    }
     if (notify && !closing) onClose(reason);
   }
 
@@ -97,18 +103,30 @@ function createLink(peer, conn, { onData, onClose }) {
 
 /**
  * Create a room. Callbacks:
- *  onCode(code)        room is registered, show the code
- *  onConnected(link)   a client joined; link is ready to use
- *  onData(msg)         message from the client
- *  onClose(reason)     client left / connection lost
- *  onError(text)       fatal setup error
- * Returns { cancel() } to abort or leave.
+ *  onCode(code)               room is registered, show the code
+ *  onConnected(link)          a client joined; link is ready to use
+ *  onData(link, msg)          message from a client
+ *  onClose(link, reason)      that client left / connection lost
+ *  onError(text)              fatal setup error
+ * `maxClients` caps the room; `room.locked = true` refuses newcomers (match
+ * running). Returns { cancel(), locked } to abort or leave.
  */
-export function hostRoom(handlers) {
+export function hostRoom(handlers, maxClients = 1) {
   const Peer = requirePeer();
   let peer = null;
-  let link = null;
+  const links = new Set();
+  let nextId = 1;
   let cancelled = false;
+  const room = {
+    locked: false,
+    cancel() {
+      cancelled = true;
+      for (const l of links) l.close();
+      links.clear();
+      // Let the goodbyes flush before the shared peer goes away.
+      setTimeout(() => peer?.destroy(), 150);
+    },
+  };
 
   function attempt(tries) {
     const code = randomCode();
@@ -118,29 +136,35 @@ export function hostRoom(handlers) {
     p.on('open', () => !cancelled && handlers.onCode(code));
 
     p.on('connection', (conn) => {
-      // Only one opponent per room; politely refuse anyone else.
-      if (link || cancelled) {
-        conn.on('open', () => {
+      const refuse = () => cancelled || room.locked || links.size >= maxClients;
+      conn.on('open', () => {
+        // Room full or match running: politely refuse.
+        if (refuse()) {
           conn.send({ t: 'full' });
           setTimeout(() => conn.close(), 200);
-        });
-        return;
-      }
-      conn.on('open', () => {
-        if (link || cancelled) return conn.close();
-        link = createLink(p, conn, handlers);
+          return;
+        }
+        const link = createLink(p, conn, {
+          onData: (msg) => handlers.onData(link, msg),
+          onClose: (reason) => {
+            links.delete(link);
+            handlers.onClose(link, reason);
+          },
+        }, false);
+        link.id = nextId++;
+        links.add(link);
         handlers.onConnected(link);
       });
     });
 
-    // Losing the broker after a client connected is harmless (the P2P channel
-    // stays up); while still waiting, try to re-register.
+    // Losing the broker only stops new players from finding the room (open
+    // P2P channels stay up), so always try to re-register.
     p.on('disconnected', () => {
-      if (!link && !cancelled && !p.destroyed) p.reconnect();
+      if (!cancelled && !p.destroyed) p.reconnect();
     });
 
     p.on('error', (err) => {
-      if (cancelled || link) return; // link-level failures arrive via onClose
+      if (cancelled || links.size) return; // link-level failures arrive via onClose
       if (err.type === 'unavailable-id' && tries < MAX_ID_RETRIES) {
         p.destroy();
         attempt(tries + 1); // code collision: pick another
@@ -152,13 +176,7 @@ export function hostRoom(handlers) {
   }
 
   attempt(0);
-  return {
-    cancel() {
-      cancelled = true;
-      if (link) link.close();
-      else peer?.destroy();
-    },
-  };
+  return room;
 }
 
 /**

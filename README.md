@@ -47,7 +47,25 @@ Tüm yollar göreli olduğu için oyun hangi klasörde olursa olsun çalışır.
 
 - **Tek oyunculu (Bot):** Karakter seçim ekranında zorluk seçilir (KOLAY / NORMAL / ZOR, tarayıcıda hatırlanır). Bot her roundda bir kademe güçlenir: daha hızlı tepki verir, daha sık bloklar, daha çok kombo yapar. KOLAY'da tavanı düşük kalır, ZOR'da en baştan sert başlar.
 - **Antrenman:** Süresiz, bitmeyen tek round. Kuklanın davranışı seçilir: DUR / BLOK / ALT BLOK / EĞİL / ZIPLA. Kombonun toplam hasarı kuklanın can barının altında görünür. Can, 1,2 saniye hasar almayınca dolar, K.O. olmaz. Çıkmak için Esc → Ana Menü.
-- **Oda Kur / Odaya Katıl (P2P):** Host 4 haneli bir kod alır, rakip bu kodla bağlanır. Simülasyon host'ta çalışır. Client her karede numaralı girdisini gönderir ve kendi karakterini anında yerelde tahmin eder (client prediction). Host'tan gelen durumla karşılaştırıp gerekirse yumuşakça düzeltir. Rakibi ise bağlantı kalitesine göre 50-150 ms arası ayarlanan bir tamponla ara değerleyerek çizer.
+- **Takım Maçı 2v2 (Bot):** Sen ve bir bot takım arkadaşı, iki bota karşı. Zorluk tek oyunculudaki gibi seçilir.
+- **Oda Kur / Odaya Katıl (P2P):** Host 4 haneli bir kod alır, en fazla 3 kişi bu kodla bağlanır. Lobide herkes önce **ORTA**'ya düşer, isteyen KIRMIZI ya da MAVİ takıma geçer. Host modu seçer (1v1 / 2v2), **RASTGELE DAĞIT** ile herkesi rastgele takımlara dağıtabilir ve **BAŞLAT**'a basar. Başlarken ortada kalan oyuncular rastgele boş koltuklara yerleşir, 2v2'de boş koltuklara bot gelir. Maç sırasında çıkan oyuncunun yerine bot geçer. Simülasyon host'ta çalışır. Client her karede numaralı girdisini gönderir ve kendi karakterini anında yerelde tahmin eder (client prediction). Host'tan gelen durumla karşılaştırıp gerekirse yumuşakça düzeltir. Rakibi ise bağlantı kalitesine göre 50-150 ms arası ayarlanan bir tamponla ara değerleyerek çizer.
+
+## 2v2 kuralları
+
+- Takım arkadaşına vuramazsın; takım arkadaşları birbirinin içinden geçebilir.
+- Herkes en yakın, ayakta duran rakibe döner.
+- Canı biten yere düşer ve roundun sonuna kadar yerde kalır. Bir takımın hepsi düşünce round biter.
+- Süre dolarsa toplam canı fazla olan takım kazanır.
+- Yerdeki halkanın rengi takımı, başının üstündeki sarı ok seni gösterir.
+- FINISH HIM / FATALITY sadece 1v1'de var.
+
+## Platformlar
+
+Her arenada üç tek yönlü platform var: iki yanda alçak (1,5 m), ortada asılı yüksek bir platform (3 m). Alttan **zıplayarak** (W) içinden geçip üstüne çıkılır, **aşağı + zıpla** ile aşağı inilir, kenardan yürüyerek de düşülür. Ortadaki platforma yerden ulaşılamaz, önce yan platforma çıkman gerekir. Fırlatma sadece aynı seviyedeki rakibe yapılır. Botlar da rakiplerinin peşinden platformlara çıkar ve iner.
+
+## Özel hareket bekleme süresi
+
+Özel hareket (enerji topu) kullanıldıktan sonra **3 saniye** dolması gerekir. Can barının altındaki mavi çubuk dolunca parlar ve hareket hazırdır. Dolmadan basılırsa hiçbir şey olmaz. FINISH HIM başladığında kazananın çubuğu anında dolar, fatality her zaman mümkündür.
 
 ## Fırlatma
 
