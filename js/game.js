@@ -198,10 +198,12 @@ export function createMatch(names = ['OYUNCU 1', 'OYUNCU 2'], chars = [0, 1], ar
     fighters.forEach((f, i) => {
       if (airborneThrown[i] && f.grounded) emit({ type: 'slam', target: i, x: f.x });
     });
-    // Only opponents push each other apart; teammates may overlap.
+    // Only opponents push each other apart; teammates may overlap, and a
+    // fighter lying K.O. in a team fight can be walked over.
     for (let i = 0; i < fighters.length; i++) {
       for (let j = i + 1; j < fighters.length; j++) {
-        if (enemies(i, j)) separate(fighters[i], fighters[j]);
+        const lying = !duel && (fighters[i].action === 'ko' || fighters[j].action === 'ko');
+        if (enemies(i, j) && !lying) separate(fighters[i], fighters[j]);
       }
     }
     stepProjectiles(dt, live);

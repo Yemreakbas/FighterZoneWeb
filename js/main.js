@@ -556,6 +556,8 @@ function connectToRoom() {
       onConnected(link) {
         lobbyLink = link;
         link.send({ t: 'hello', char: myChar });
+        // Clear any host controls left from hosting earlier until the lobby arrives.
+        ui.renderLobby({ size: 4, players: [] }, -1, false, CHARACTERS);
         ui.setRoomCode(code);
         ui.setHostStatus('Bağlandı. Host\'un başlatması bekleniyor...');
         ui.showScreen('lobby');
@@ -659,7 +661,10 @@ const hud = {
     state.fighters.forEach((f, i) => {
       this.set(`hp${i}`, f.hp, (v) => ui.setHealth(i, v, MATCH.maxHp));
       const charge = Math.round((1 - (f.cooldown || 0) / ATTACKS.special.cooldown) * 20) / 20;
-      this.set(`sp${i}`, charge, (v) => ui.setSpecial(i, v));
+      this.set(`sp${i}`, charge, (v) => {
+        ui.setSpecial(i, v);
+        if (i === local) ui.setTouchSpecial(v);
+      });
     });
     this.set('round', state.training ? 0 : state.round, ui.setRound);
     this.set('timer', state.training ? null : Math.ceil(state.timer), ui.setTimer);
@@ -771,7 +776,24 @@ ui.bindActions({
     ui.showScreen(null);
   },
   back: () => leaveToMenu(),
+  fullscreen: toggleFullscreen,
 });
+
+/**
+ * Phones: fullscreen hides the browser bars, and landscape is locked where
+ * the browser allows it (Android Chrome; iOS Safari ignores both quietly).
+ */
+async function toggleFullscreen() {
+  const doc = document;
+  try {
+    if (doc.fullscreenElement) {
+      await doc.exitFullscreen();
+      return;
+    }
+    await doc.documentElement.requestFullscreen?.({ navigationUI: 'hide' });
+    await screen.orientation?.lock?.('landscape');
+  } catch { /* not supported or refused: keep playing in the page */ }
+}
 
 window.addEventListener('keydown', (e) => {
   if (e.code === 'Escape') {
@@ -787,6 +809,11 @@ window.addEventListener('keydown', (e) => {
 // Switching tabs mid-fight pauses solo play instead of letting the bot win.
 document.addEventListener('visibilitychange', () => {
   if (document.hidden && session?.pausable) pause();
+});
+// So does turning a phone upright (the "rotate" overlay covers the fight).
+const portraitPhone = window.matchMedia('(pointer: coarse) and (orientation: portrait) and (max-width: 600px)');
+portraitPhone.addEventListener?.('change', (e) => {
+  if (e.matches && session?.pausable) pause();
 });
 // Audio may only start after a user gesture.
 window.addEventListener('pointerdown', sound.unlock);

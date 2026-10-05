@@ -87,6 +87,7 @@
       <button class="btn" data-action="host">ODA KUR (HOST)</button>
       <button class="btn" data-action="join">ODAYA KATIL (JOIN)</button>
       <button class="btn secondary" data-action="help">NASIL OYNANIR</button>
+      <button class="btn secondary touch-only" data-action="fullscreen">TAM EKRAN</button>
       <p class="status" id="menu-status"></p>
     </div>
   </div>
@@ -144,11 +145,11 @@
         </div>
       </div>
       <p class="status" id="host-status">Oda kuruluyor...</p>
-      <div class="lobby-actions host-only">
-        <button class="btn secondary" data-action="lobby-random">RASTGELE DAĞIT</button>
-        <button class="btn" data-action="lobby-start" id="lobby-start">BAŞLAT</button>
+      <div class="lobby-actions">
+        <button class="btn secondary" data-action="back">ÇIK</button>
+        <button class="btn secondary host-only" data-action="lobby-random">RASTGELE DAĞIT</button>
+        <button class="btn host-only" data-action="lobby-start" id="lobby-start">BAŞLAT</button>
       </div>
-      <button class="btn secondary" data-action="back">ÇIK</button>
     </div>
   </div>
 
@@ -173,6 +174,7 @@
           <tr><td>Hareket</td><td><kbd>A</kbd> <kbd>D</kbd> / <kbd>←</kbd> <kbd>→</kbd></td><td>D-pad / sol analog</td><td>◀ ▶</td></tr>
           <tr><td>Zıpla</td><td><kbd>W</kbd> / <kbd>↑</kbd> / <kbd>Space</kbd></td><td>↑</td><td>▲</td></tr>
           <tr><td>Eğil</td><td><kbd>S</kbd> / <kbd>↓</kbd></td><td>↓</td><td>▼</td></tr>
+          <tr><td>Platformdan in</td><td><kbd>S</kbd> + <kbd>W</kbd></td><td>↓ + ↑</td><td>▼▼ (çift dokun)</td></tr>
           <tr><td>Yumruk</td><td><kbd>J</kbd></td><td>X [□]</td><td>YUMRUK</td></tr>
           <tr><td>Tekme</td><td><kbd>K</kbd></td><td>A [✕]</td><td>TEKME</td></tr>
           <tr><td>Özel (enerji topu)</td><td><kbd>U</kbd></td><td>B [○]</td><td>ÖZEL</td></tr>
@@ -187,7 +189,7 @@
         <li><b>Blok</b> hasarın çoğunu keser ama sadece yüzün rakibe dönükken ve yerdeyken çalışır.</li>
         <li><b>Eğilip tekme</b> bir <b>süpürmedir</b>: rakibi yere serer ve ayakta bloğu deler. Sadece <b>aşağı + blok</b> (alt blok) durdurur. Boşa giderse geç toparlanırsın.</li>
         <li>Rakibe yapışıkken <b>ileri + yumruk</b> onu tutup omzunun üstünden fırlatır. Fırlatma <b>bloğu deler</b> ama boşa giderse uzun süre açık kalırsın, vuruş yiyen biri de tutulamaz.</li>
-        <li>Rakip sersemlemişken üst üste vurursan <b>combo</b> olur: yumruk → yumruk → tekme.</li>
+        <li>Rakip sersemlemişken üst üste vurursan <b>combo</b> olur, ama en fazla <b>2 vuruş</b>: ikinci vuruşu yiyen geri savrulur ve kısa süre yanıp söner, bu arada ona vurulamaz. Köşede yumruk spamıyla kilitlenmek yok.</li>
         <li>Ekranda oyuncu başına tek <b>enerji topu</b> olabilir. İki top çarpışırsa birbirini yok eder.</li>
         <li>Maçı bitiren K.O.'dan sonra <b>FINISH HIM!</b> gelir. 4 saniye içinde özel hareketle vurursan <b>FATALITY</b>.</li>
         <li>İki round alan maçı kazanır.</li>
@@ -218,6 +220,12 @@
       <button class="btn" data-action="rematch" id="rematch-btn">TEKRAR OYNA</button>
       <button class="btn secondary" data-action="back">ANA MENÜ</button>
     </div>
+  </div>
+
+  <!-- Phones held upright: the fight needs a landscape screen. -->
+  <div id="rotate" aria-hidden="true">
+    <div class="rotate-icon">📱</div>
+    <p>Daha rahat oynamak için telefonu yan çevir</p>
   </div>
 
   <script type="module" src="./js/main.js"></script>

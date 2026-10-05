@@ -98,7 +98,9 @@ export function createFighterView(scene, color) {
     animTime += dt;
     root.position.set(x, y, 0);
     // After a fatality the body is replaced by flying pieces (effects.js).
-    root.visible = enabled && f.action !== 'fatality';
+    // Blinks while untouchable after a combo breaker.
+    const blink = f.guard > 0 && Math.floor(animTime * 18) % 2 === 0;
+    root.visible = enabled && f.action !== 'fatality' && !blink;
     arrow.position.y = 2.35 + Math.sin(animTime * 5) * 0.06;
 
     // Turn mostly sideways but slightly toward the camera for readability.

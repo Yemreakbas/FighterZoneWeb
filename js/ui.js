@@ -75,6 +75,14 @@ export function setHealth(index, hp, maxHp) {
   $(`row-${index}`)?.classList.toggle('down', hp <= 0);
 }
 
+/** The local player's charge also dims the on-screen ÖZEL button until ready. */
+export function setTouchSpecial(charge) {
+  const btn = document.querySelector('.tbtn.special');
+  if (!btn) return;
+  btn.style.setProperty('--charge', String(charge));
+  btn.classList.toggle('charging', charge < 1);
+}
+
 /** Special-move charge, 0 (just used) to 1 (ready). */
 export function setSpecial(index, charge) {
   const el = $(`sp-${index}`);

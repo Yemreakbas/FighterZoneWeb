@@ -156,6 +156,15 @@ export const ARENAS = [
 // for this long (and instantly if it would be knocked out).
 export const TRAINING = { refillDelay: 1.2 };
 
+/**
+ * Combo breaker: no infinite pressure (punch spam in a corner). A fighter
+ * hit again while still stunned has taken `maxChain` hits in a row; that hit
+ * knocks them clear (`push`, the attacker is shoved back by `attackerPush`),
+ * shortens the stun to `stun` and makes them untouchable for `guard`
+ * seconds so they can move or counter.
+ */
+export const COMBO_BREAK = { maxChain: 2, stun: 0.2, guard: 0.6, push: 6, attackerPush: 3 };
+
 // Impact freeze on clean hits (seconds). Blocked hits don't freeze.
 export const HITSTOP = { light: 0.05, heavy: 0.09 };
 

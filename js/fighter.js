@@ -1,4 +1,4 @@
-import { ARENA, ATTACKS, BODY, CHARACTERS, CROUCH_ATTACK_DROP, INPUT_BUFFER, MATCH, PHYSICS, PROJECTILE, SWEEP } from './config.js';
+import { ARENA, ATTACKS, BODY, CHARACTERS, COMBO_BREAK, CROUCH_ATTACK_DROP, INPUT_BUFFER, MATCH, PHYSICS, PROJECTILE, SWEEP } from './config.js';
 
 // Pure simulation of a single fighter. State is plain JSON-friendly data so
 // the host can serialize it straight into network snapshots. No Three.js here.
@@ -29,6 +29,8 @@ export function createFighter(x, facing, char = 0) {
     airAttack: false,  // one aerial attack per jump
     cooldown: 0,       // seconds until the special move is ready again
     drop: 0,           // seconds left falling through platforms (down + jump)
+    chain: 0,          // hits taken in a row without recovering (combo breaker)
+    guard: 0,          // seconds left untouchable after a combo breaker
     buffer: null,      // { type, age } attack pressed while busy
   };
 }
@@ -92,6 +94,8 @@ export function stepFighter(f, input, opp, dt) {
   f.t += dt;
   f.cooldown = Math.max(0, f.cooldown - dt);
   f.drop = Math.max(0, f.drop - dt);
+  f.guard = Math.max(0, f.guard - dt);
+  if (f.action !== 'hit') f.chain = 0;
 
   // Remember attack presses that arrive while the fighter cannot act yet.
   const pressedMove = input.special ? 'special' : input.punch ? 'punch' : input.kick ? 'kick' : null;
@@ -297,7 +301,7 @@ export function resolveHit(attacker, defender) {
  */
 export function findHit(attacker, defender) {
   if (!isActiveFrame(attacker) || attacker.attackHit) return null;
-  if (defender.action === 'ko') return null;
+  if (defender.action === 'ko' || defender.guard > 0) return null;
 
   const hb = hitbox(attacker);
   const hu = hurtbox(defender);
@@ -323,7 +327,7 @@ export function applyContact({ attacker, defender, move, sweep, dir, x, y }) {
     const blocked = applySweep(dir, defender, power);
     return { type: 'hit', blocked, heavy: true, sweep: defender.action === 'swept', x, y };
   }
-  const blocked = applyHit(ATTACKS[move], dir, defender, power);
+  const blocked = applyHit(ATTACKS[move], dir, defender, power, attacker);
   return { type: 'hit', blocked, heavy: move === 'kick', x, y };
 }
 
@@ -335,6 +339,7 @@ export function applyContact({ attacker, defender, move, sweep, dir, x, y }) {
 function applySweep(dir, defender, power) {
   const lowBlock = defender.action === 'block' && defender.crouch && defender.facing === -dir;
   if (lowBlock || !defender.grounded) return applyHit(ATTACKS.kick, dir, defender, power);
+  defender.chain = 0;
   defender.hp = Math.max(0, defender.hp - SWEEP.damage * power);
   defender.action = 'swept';
   defender.t = 0;
@@ -350,10 +355,12 @@ function applySweep(dir, defender, power) {
 /**
  * Apply attack data `a` travelling in direction `dir` (+1/-1) to the
  * defender. A block only works on the ground while facing the incoming
- * attack. Returns true if it was blocked.
+ * attack. Returns true if it was blocked. The hit that completes a chain
+ * of COMBO_BREAK.maxChain triggers the combo breaker (see config).
  */
-function applyHit(a, dir, defender, power = 1) {
+function applyHit(a, dir, defender, power = 1, attacker = null) {
   const blocked = defender.action === 'block' && defender.grounded && defender.facing === -dir;
+  const stunned = defender.action === 'hit' && defender.stun > 0;
 
   if (blocked) {
     defender.hp = Math.max(0, defender.hp - a.chip * power);
@@ -367,6 +374,16 @@ function applyHit(a, dir, defender, power = 1) {
     defender.vx = dir * a.knockback;
     defender.buffer = null;
     if (!defender.grounded) defender.vy = Math.max(defender.vy, 3); // juggle pop
+    defender.chain = stunned ? defender.chain + 1 : 1;
+    if (defender.chain >= COMBO_BREAK.maxChain) {
+      defender.chain = 0;
+      defender.stun = Math.min(defender.stun, COMBO_BREAK.stun);
+      defender.guard = COMBO_BREAK.guard;
+      defender.vx = dir * COMBO_BREAK.push;
+      // Pinned in a corner the defender can't fly back, so the attacker
+      // is always shoved away too.
+      if (attacker) attacker.vx = -dir * COMBO_BREAK.attackerPush;
+    }
   }
   return blocked;
 }
@@ -376,7 +393,7 @@ function applyHit(a, dir, defender, power = 1) {
 // ---------------------------------------------------------------------------
 
 function canBeThrown(f) {
-  return f.grounded && THROWABLE.has(f.action) && !(f.action === 'block' && f.stun > 0);
+  return f.grounded && f.guard <= 0 && THROWABLE.has(f.action) && !(f.action === 'block' && f.stun > 0);
 }
 
 /** Both standing on the same surface (floor or the same platform). */
@@ -439,7 +456,7 @@ export function projectileBox(p) {
 
 /** Resolve a projectile against its target. Returns a hit event or null. */
 export function projectileHit(p, defender) {
-  if (defender.action === 'ko') return null;
+  if (defender.action === 'ko' || defender.guard > 0) return null;
   if (!overlaps(projectileBox(p), hurtbox(defender))) return null;
   const blocked = applyHit(ATTACKS.special, Math.sign(p.vx), defender, p.power);
   return { type: 'hit', blocked, heavy: true, x: p.x, y: p.y };

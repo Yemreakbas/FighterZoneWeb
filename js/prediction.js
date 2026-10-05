@@ -46,6 +46,7 @@ export function createPredictor() {
     // copies so only our side of each push is applied.
     others.forEach((f, i) => {
       if (teams[i] === teams[index]) return;
+      if (others.length > 2 && (f.action === 'ko' || me.action === 'ko')) return; // bodies don't block in 2v2
       if (i < index) separate({ ...f }, me);
       else separate(me, { ...f });
     });

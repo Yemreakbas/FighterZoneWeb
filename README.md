@@ -50,6 +50,10 @@ Tüm yollar göreli olduğu için oyun hangi klasörde olursa olsun çalışır.
 - **Takım Maçı 2v2 (Bot):** Sen ve bir bot takım arkadaşı, iki bota karşı. Zorluk tek oyunculudaki gibi seçilir.
 - **Oda Kur / Odaya Katıl (P2P):** Host 4 haneli bir kod alır, en fazla 3 kişi bu kodla bağlanır. Lobide herkes önce **ORTA**'ya düşer, isteyen KIRMIZI ya da MAVİ takıma geçer. Host modu seçer (1v1 / 2v2), **RASTGELE DAĞIT** ile herkesi rastgele takımlara dağıtabilir ve **BAŞLAT**'a basar. Başlarken ortada kalan oyuncular rastgele boş koltuklara yerleşir, 2v2'de boş koltuklara bot gelir. Maç sırasında çıkan oyuncunun yerine bot geçer. Simülasyon host'ta çalışır. Client her karede numaralı girdisini gönderir ve kendi karakterini anında yerelde tahmin eder (client prediction). Host'tan gelen durumla karşılaştırıp gerekirse yumuşakça düzeltir. Rakibi ise bağlantı kalitesine göre 50-150 ms arası ayarlanan bir tamponla ara değerleyerek çizer.
 
+## Kombo kırıcı
+
+Bir dövüşçü sersemken üst üste en fazla **2 vuruş** yiyebilir. İkinci vuruşta geri savrulur, saldıran da biraz geri itilir. Ardından 0,6 saniye boyunca yanıp söner; bu sürede ona vuruş, fırlatma ya da enerji topu işlemez, o da hareket edebilir. Böylece köşeye sıkıştırıp yumruk spamlayarak sonsuz kombo yapılamaz.
+
 ## 2v2 kuralları
 
 - Takım arkadaşına vuramazsın; takım arkadaşları birbirinin içinden geçebilir.
@@ -123,6 +127,13 @@ Değerler `js/config.js` içindeki `CHARACTERS` listesinde. Yeni karakter ekleme
 **Gamepad** (Xbox / PlayStation, tarayıcının standart eşlemesi): D-pad veya sol analog hareket, ↑ zıpla, ↓ eğil · X [□] yumruk · A [✕] tekme · B [○] özel · LB / RB / RT blok · Start duraklat. Menüler fare, klavye ya da dokunmatikle kullanılıyor.
 
 Dokunmatik cihazlarda ekranda yön tuşları ve YUMRUK / TEKME / ÖZEL / BLOK butonları çıkar.
+
+**Mobil:**
+- Oyun yatay ekran için tasarlandı. Telefon dikey tutulunca "yan çevir" uyarısı çıkar ve tek oyunculu maç duraklar.
+- Ana menüdeki **TAM EKRAN** tarayıcı çubuklarını gizler ve destekleyen tarayıcılarda (Android Chrome) ekranı yataya kilitler.
+- Platformdan inmek için **▼'ye çift dokun** (klavyedeki aşağı + zıpla ile aynı).
+- ÖZEL butonu bekleme süresince sönük durur ve alttan dolar.
+- Kısa ekranlarda HUD, menüler ve lobi sıkıştırılır, kamera dövüşçülere biraz yaklaşır.
 
 ## Yapı
 

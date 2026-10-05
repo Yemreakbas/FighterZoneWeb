@@ -73,7 +73,7 @@ function encodeFull(f) {
     ch: f.char, x: r3(f.x), y: r3(f.y), vx: r3(f.vx), vy: r3(f.vy), d: f.facing, hp: r3(f.hp),
     a: f.action, t: r3(f.t), c: f.crouch ? 1 : 0, g: f.grounded ? 1 : 0, st: r3(f.stun),
     ah: f.attackHit ? 1 : 0, aa: f.airAttack ? 1 : 0, b: f.buffer ? [f.buffer.type, r3(f.buffer.age)] : 0,
-    cd: r3(f.cooldown),
+    cd: r3(f.cooldown), cn: f.chain, gd: r3(f.guard),
   };
 }
 
@@ -87,6 +87,7 @@ function decodeFull(o) {
     facing: o.d < 0 ? -1 : 1, hp: num(o.hp), action: ACTIONS.has(o.a) ? o.a : 'idle', t: num(o.t),
     crouch: !!o.c, grounded: !!o.g, stun: num(o.st), attackHit: !!o.ah, airAttack: !!o.aa, buffer: buf,
     cooldown: Math.max(0, num(o.cd)),
+    chain: Math.max(0, Math.floor(num(o.cn))), guard: Math.max(0, num(o.gd)),
   };
 }
 
@@ -116,7 +117,7 @@ export function encodeSnapshot(state, tick, events, ack = 0, meIndex = 1) {
       wn: state.winner,
       f: state.fighters.map((f) => ({
         x: r3(f.x), y: r3(f.y), d: f.facing, hp: r3(f.hp),
-        a: f.action, t: r3(f.t), c: f.crouch ? 1 : 0, g: f.grounded ? 1 : 0, cd: r3(f.cooldown),
+        a: f.action, t: r3(f.t), c: f.crouch ? 1 : 0, g: f.grounded ? 1 : 0, cd: r3(f.cooldown), gd: r3(f.guard),
       })),
       pr: state.projectiles.map((p) => ({ o: p.owner, x: r3(p.x), y: r3(p.y), d: Math.sign(p.vx) })),
     },
@@ -173,7 +174,7 @@ function decodeState(s) {
     fighters: s.f.map((f) => ({
       x: num(f?.x), y: num(f?.y), facing: f?.d < 0 ? -1 : 1, hp: num(f?.hp),
       action: ACTIONS.has(f?.a) ? f.a : 'idle', t: num(f?.t),
-      crouch: !!f?.c, grounded: !!f?.g, cooldown: Math.max(0, num(f?.cd)),
+      crouch: !!f?.c, grounded: !!f?.g, cooldown: Math.max(0, num(f?.cd)), guard: Math.max(0, num(f?.gd)),
     })),
     projectiles: (Array.isArray(s.pr) ? s.pr.slice(0, n) : []).map((p) => ({
       owner: Number.isInteger(p?.o) && p.o >= 0 && p.o < n ? p.o : 0, x: num(p?.x), y: num(p?.y), vx: p?.d < 0 ? -1 : 1,

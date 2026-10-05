@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { ARENA, ARENAS, ATTACKS, BOT_DIFFICULTIES, BOT_LEVELS, CHARACTERS, MATCH, NET, PHYSICS, SWEEP, TICK, TRAINING } from '../js/config.js';
+import { ARENA, ARENAS, ATTACKS, BOT_DIFFICULTIES, BOT_LEVELS, CHARACTERS, MATCH, COMBO_BREAK, NET, PHYSICS, SWEEP, TICK, TRAINING } from '../js/config.js';
 import { EMPTY_INPUT } from '../js/fighter.js';
 import { createMatch, targetOf } from '../js/game.js';
 import { botLevel, createBot } from '../js/bot.js';
@@ -731,4 +731,48 @@ test('2v2: four fighters and teams survive the network round trip', () => {
   assert.deepEqual(auth.teams, [0, 0, 1, 1]);
   assert.equal(auth.fighters.length, 4);
   assert.equal(auth.me.x, 3);
+});
+
+test('2v2: a knocked-out fighter does not block anyone', () => {
+  const m = teamFightAt([0, -6, 3, 6]);
+  m.state.fighters[0].hp = 0;
+  run4(m, 2, () => [{}, {}, {}, {}]);
+  assert.equal(m.state.fighters[0].action, 'ko');
+  // Fighter 2 walks left over the body toward fighter 1.
+  run4(m, 60, () => [{}, {}, { left: true }, {}]);
+  assert.ok(m.state.fighters[2].x < -0.5, `walked past the body, x=${m.state.fighters[2].x}`);
+});
+
+// ---------------------------------------------------------------------------
+// Combo breaker
+// ---------------------------------------------------------------------------
+
+test('punch spam in a corner lands at most two hits in a row', () => {
+  // Defender pinned against the right wall, attacker mashing punch.
+  const m = fightAt(ARENA.halfWidth - 1, ARENA.halfWidth);
+  const ev = run(m, 40, (t) => [t % 3 === 0 ? { punch: true } : {}, {}]);
+  const clean = hits(ev).filter((e) => !e.blocked);
+  assert.ok(clean.length <= COMBO_BREAK.maxChain, `got ${clean.length} hits in a row`);
+  assert.ok(m.state.fighters[1].guard > 0 || m.state.fighters[1].action !== 'hit', 'defender is free');
+});
+
+test('after a combo breaker the defender can walk out of the corner', () => {
+  const m = fightAt(ARENA.halfWidth - 1, ARENA.halfWidth);
+  let hitsTaken = 0;
+  for (let t = 0; t < 90; t++) {
+    const ev = run(m, 1, () => [t % 3 === 0 ? { punch: true } : {}, { left: m.state.fighters[1].action !== 'hit' }]);
+    hitsTaken += hits(ev).filter((e) => !e.blocked).length;
+  }
+  // Mashing keeps going, but the lock is broken: the defender gets off the
+  // wall and takes only a few hits in 1.5 s instead of a non-stop chain.
+  assert.ok(m.state.fighters[1].x < ARENA.halfWidth - 0.8, `x=${m.state.fighters[1].x}`);
+  assert.ok(hitsTaken <= 3, `hits=${hitsTaken}`);
+});
+
+test('a fighter in combo-breaker guard cannot be hit, thrown or hit by a projectile', () => {
+  const m = fightAt(0, 1);
+  m.state.fighters[1].guard = 1;
+  const ev = hits(run(m, 30, (t) => [t === 0 ? { right: true, punch: true } : {}, {}]));
+  assert.equal(ev.length, 0);
+  assert.equal(m.state.fighters[1].hp, MATCH.maxHp);
 });

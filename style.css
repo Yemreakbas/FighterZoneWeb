@@ -464,6 +464,64 @@ kbd {
   font-size: 16px;
 }
 
+/* Special recharging: the ÖZEL button fills from the bottom and stays dim. */
+.touch-actions .special.charging {
+  opacity: 0.55;
+  background: linear-gradient(to top, rgba(63, 160, 255, 0.45) calc(var(--charge, 1) * 100%), rgba(255, 255, 255, 0.06) 0);
+}
+
+.touch-only { display: none; }
+@media (pointer: coarse) { .touch-only { display: block; } }
+
+/* Portrait phone: ask to rotate. Shown above everything, dismissed by rotating. */
+#rotate { display: none; }
+@media (pointer: coarse) and (orientation: portrait) and (max-width: 600px) {
+  #rotate {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 24px;
+    text-align: center;
+    font: 700 20px 'Rajdhani', sans-serif;
+    background: rgba(7, 7, 13, 0.92);
+  }
+  .rotate-icon { font-size: 56px; animation: rotate-hint 1.6s ease-in-out infinite; }
+}
+@keyframes rotate-hint { 0%, 30% { transform: rotate(0); } 60%, 100% { transform: rotate(-90deg); } }
+
+/* Short landscape screens (phones): compact HUD, menus and touch pad. */
+@media (max-height: 500px) {
+  .hud-bar { padding: 8px 12px; gap: 10px; }
+  .team-rows { gap: 4px; }
+  .frow { gap: 2px; }
+  .fighter-name { font-size: 9px; }
+  .health { height: 13px; border-width: 1px; }
+  .frow.compact .health { height: 8px; }
+  .frow.compact .fighter-name { font-size: 7px; }
+  .special { height: 3px; }
+  .wins i { width: 9px; height: 9px; }
+  .round-info { font-size: 8px; gap: 2px; min-width: 56px; }
+  #timer { font-size: 18px; }
+  .tbtn.menu { top: 56px; }
+  #train-info { top: 46px; font-size: 8px; }
+  .combo { top: 30%; }
+
+  .logo { font-size: 20px; margin-bottom: 4px; }
+  /* Two columns of menu buttons so the whole menu fits without scrolling. */
+  #menu .panel { width: min(640px, 100%); display: grid; grid-template-columns: 1fr 1fr; }
+  #menu .logo, #menu .status { grid-column: 1 / -1; text-align: center; }
+  .panel { padding: 16px 18px; gap: 8px; }
+  .btn { padding: 9px 14px; font-size: 15px; }
+  .room-code { font-size: 24px; padding: 2px 0; }
+  .slots { min-height: 0; }
+  .team-col { padding: 6px; gap: 5px; }
+}
+
 /* Result screen sits on top of the frozen fight. */
 #result, #pause { background: rgba(7, 7, 13, 0.55); }
 

@@ -91,7 +91,10 @@ export function createStage(container) {
     const midX = (minX + maxX) / 2;
     // Raise the view toward fighters up on platforms, but keep the floor in shot.
     const lift = Math.min((minY + maxY) / 2, 1.8);
-    const dist = THREE.MathUtils.clamp(
+    // Wide phone screens show plenty of width: come closer so fighters
+    // don't end up tiny on a short display.
+    const closer = camera.aspect > 1.9 ? 0.82 : 1;
+    const dist = closer * THREE.MathUtils.clamp(
       CAMERA.minDistance + Math.max((maxX - minX) * 0.6, (maxY - minY) * 1.4),
       CAMERA.minDistance, CAMERA.maxDistance,
     );

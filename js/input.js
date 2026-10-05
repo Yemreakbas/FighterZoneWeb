@@ -18,7 +18,8 @@ const PRESS = {
 
 export function createKeyboard() {
   const held = { left: false, right: false, down: false, block: false };
-  const pressed = { jump: false, punch: false, kick: false, special: false };
+  // `drop` is a touch-only shortcut for down + jump (double-tap ▼).
+  const pressed = { jump: false, punch: false, kick: false, special: false, drop: false };
 
   const isTyping = (e) => e.target instanceof HTMLElement && e.target.matches('input, textarea');
 
@@ -47,9 +48,12 @@ export function createKeyboard() {
     poll: () => pad.poll(),
     /** Snapshot of the current input; clears the edge-triggered presses. */
     sample() {
-      const out = { ...pressed };
+      const { drop, ...out } = pressed;
       for (const k in held) out[k] = held[k] || touchHeld[k] > 0 || pad.held[k];
-      pressed.jump = pressed.punch = pressed.kick = pressed.special = false;
+      // One thumb can't hold ▼ and tap ▲, so a double-tap on ▼ drops
+      // through a platform (down + jump).
+      if (drop) out.down = out.jump = true;
+      pressed.jump = pressed.punch = pressed.kick = pressed.special = pressed.drop = false;
       return out;
     },
   };
@@ -111,6 +115,8 @@ function createGamepadReader(pressed) {
 function bindTouch(pressed) {
   const counts = { left: 0, right: 0, down: 0, block: 0 };
   const byPointer = new Map(); // pointerId -> button element
+  const DOUBLE_TAP_MS = 300;
+  let lastDownTap = -Infinity;
 
   const release = (e) => {
     const btn = byPointer.get(e.pointerId);
@@ -128,6 +134,10 @@ function bindTouch(pressed) {
       btn.classList.add('on');
       if (btn.dataset.hold) counts[btn.dataset.hold]++;
       if (btn.dataset.press) pressed[btn.dataset.press] = true;
+      if (btn.dataset.hold === 'down') {
+        if (e.timeStamp - lastDownTap < DOUBLE_TAP_MS) pressed.drop = true;
+        lastDownTap = e.timeStamp;
+      }
       // Capture keeps the release on this button even if the finger slides
       // off. It throws for unknown/inactive pointers, which must not undo
       // the press above.
