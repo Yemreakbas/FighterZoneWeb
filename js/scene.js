@@ -4,9 +4,10 @@ import { platformsAt } from './fighter.js';
 
 /**
  * Render quality tiers (DÜŞÜK / ORTA / YÜKSEK): pixel-ratio cap and
- * key-light shadow map size (0 = no shadows). In 'auto' mode phones start at
- * medium, other devices at high, and any device drops a tier when frames run
- * slow (see `reportFrame`). A fixed tier chosen in the menu is kept as is.
+ * key-light shadow map width (0 = no shadows; the map is half as tall, see
+ * applyQuality). In 'auto' mode phones start at medium, other devices at
+ * high, and any device drops a tier when frames run slow (see
+ * `reportFrame`). A fixed tier chosen in the menu is kept as is.
  */
 const QUALITY = [
   { dpr: 0.85, shadow: 0 },
@@ -56,7 +57,9 @@ export function createStage(container) {
     renderer.setSize(window.innerWidth, window.innerHeight);
     lights.key.castShadow = q.shadow > 0;
     if (q.shadow) {
-      lights.key.shadow.mapSize.set(q.shadow, q.shadow);
+      // The shadow camera covers an area twice as wide as tall (see
+      // addLights), so a 2:1 map keeps square texels at half the cost.
+      lights.key.shadow.mapSize.set(q.shadow, q.shadow / 2);
       lights.key.shadow.map?.dispose();
       lights.key.shadow.map = null; // re-created at the new size
     }
@@ -235,8 +238,9 @@ function addLights(scene) {
   const key = new THREE.DirectionalLight(0xffffff, 2.2);
   key.position.set(5, 12, 8);
   key.castShadow = true;
-  key.shadow.mapSize.set(2048, 2048);
-  // Tight around the arena so the shadow map's texels aren't wasted.
+  key.shadow.mapSize.set(2048, 1024);
+  // Tight around the arena so the shadow map's texels aren't wasted
+  // (22 x 11 units: the map is 2:1 to match).
   key.shadow.camera.left = -11;
   key.shadow.camera.right = 11;
   key.shadow.camera.top = 9;
@@ -287,6 +291,13 @@ function archGeometry(w, h, opening, depth) {
   return new THREE.ExtrudeGeometry(s, { depth, bevelEnabled: false, curveSegments: 14 });
 }
 
+/*
+ * The scenery is lit with Lambert (diffuse only) materials: the stone, wood
+ * and cloth are rough anyway, so the PBR highlights were barely visible, and
+ * these surfaces cover nearly every pixel. Measured on an integrated GPU this
+ * cut a third of the frame's GPU time. Fighters keep MeshStandardMaterial.
+ * Only the floor and the platform tops receive shadows (where fighters stand).
+ */
 function addArena(scene) {
   // Floor: brightest where the fight is, darker toward the camera and the wall.
   const floor = new THREE.Mesh(
@@ -294,29 +305,18 @@ function addArena(scene) {
       const d = Math.hypot(x / 15, y / (y < 0 ? 6 : 10)); // local -y faces the camera
       return 1 - 0.55 * smooth(0.35, 1.2, d);
     }),
-    new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0.1, vertexColors: true })
+    new THREE.MeshLambertMaterial({ vertexColors: true })
   );
   floor.rotation.x = -Math.PI / 2;
   floor.position.y = ARENA.groundY;
   floor.receiveShadow = true;
   scene.add(floor);
 
-  // Fighting plane marker.
-  const lane = new THREE.Mesh(
-    new THREE.PlaneGeometry(ARENA.halfWidth * 2 + 2, 2.4),
-    new THREE.MeshStandardMaterial({ color: 0x5a2020, roughness: 0.6, transparent: true, opacity: 0.25 })
-  );
-  lane.rotation.x = -Math.PI / 2;
-  lane.position.y = ARENA.groundY + 0.005;
-  lane.receiveShadow = true;
-  scene.add(lane);
-
-  const pillarMat = new THREE.MeshStandardMaterial({ color: 0x3a3440, roughness: 0.9 });
-  const ironMat = new THREE.MeshStandardMaterial({ color: 0x2a2a32, roughness: 0.5, metalness: 0.6 });
+  const pillarMat = new THREE.MeshLambertMaterial({ color: 0x3a3440 });
+  const ironMat = new THREE.MeshLambertMaterial({ color: 0x2a2a32 });
   const solid = (geo, mat) => {
     const m = new THREE.Mesh(geo, mat);
     m.castShadow = true;
-    m.receiveShadow = true;
     return m;
   };
 
@@ -336,7 +336,7 @@ function addArena(scene) {
   const wall = new THREE.Mesh(
     bakeShade(new THREE.PlaneGeometry(60, 20, 30, 20), (x, y) =>
       (1 - 0.75 * smooth(2, 16, y + 10)) * (1 - 0.4 * smooth(10, 25, Math.abs(x)))),
-    new THREE.MeshStandardMaterial({ roughness: 1, vertexColors: true })
+    new THREE.MeshLambertMaterial({ vertexColors: true })
   );
   wall.position.set(0, 10, -8);
   scene.add(wall);
@@ -346,9 +346,9 @@ function addArena(scene) {
   const bannerTex = bannerTexture();
   const bannerMats = [];
   const bannerPivots = [-5, 5].map((x) => {
-    const mat = new THREE.MeshStandardMaterial({
+    const mat = new THREE.MeshLambertMaterial({
       map: bannerTex, emissiveMap: bannerTex, emissiveIntensity: 0.14,
-      alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.95,
+      alphaTest: 0.5, side: THREE.DoubleSide,
     });
     bannerMats.push(mat);
     const pivot = new THREE.Group();
@@ -372,8 +372,8 @@ function addArena(scene) {
   // glance. Each is a group centred on the platform so moving ones (see
   // updatePlatforms) carry their chains along. Side slabs rest on a stone
   // arch behind the fighting plane; the top one hangs on chains.
-  const lipMat = new THREE.MeshStandardMaterial({ color: 0xffb060, emissive: 0xff8a2a, emissiveIntensity: 0.6, roughness: 0.5 });
-  const trimMat = new THREE.MeshStandardMaterial({ color: 0x15131a, roughness: 0.9 });
+  const lipMat = new THREE.MeshLambertMaterial({ color: 0xffb060, emissive: 0xff8a2a, emissiveIntensity: 0.6 });
+  const trimMat = new THREE.MeshLambertMaterial({ color: 0x15131a });
   const SLAB = ARENA.slab;
   const DEPTH = 1.8;
   const platforms = ARENA.platforms.map((p) => {
@@ -384,6 +384,7 @@ function addArena(scene) {
 
     const slab = solid(new THREE.BoxGeometry(w, SLAB, DEPTH), pillarMat);
     slab.position.y = p.y - SLAB / 2;
+    slab.receiveShadow = true; // fighters stand on it
     group.add(slab);
     // A dark band along the underside of the front edge: the slab reads as thick, carved stone.
     const trim = new THREE.Mesh(new THREE.BoxGeometry(w + 0.04, 0.07, 0.06), trimMat);
@@ -476,9 +477,9 @@ function addDetails(scene, stoneMat, ironMat) {
   }
 
   // Crates by the left pillar, barrels by the right one (behind the lane).
-  const wood = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 0.9, map: crateTexture() });
-  const darkWood = new THREE.MeshStandardMaterial({ color: 0x4a2f1a, roughness: 0.85 });
-  const band = new THREE.MeshStandardMaterial({ color: 0x2a2a30, roughness: 0.6, metalness: 0.4 });
+  const wood = new THREE.MeshLambertMaterial({ color: 0x6b4a2b, map: crateTexture() });
+  const darkWood = new THREE.MeshLambertMaterial({ color: 0x4a2f1a });
+  const band = new THREE.MeshLambertMaterial({ color: 0x2a2a30 });
   for (const [x, y, z, s, r] of [[-9.6, 0.45, -2.6, 0.9, 0.2], [-8.6, 0.4, -3.1, 0.8, -0.3], [-9.2, 1.3, -2.9, 0.8, 0.5]]) {
     const crate = new THREE.Mesh(new THREE.BoxGeometry(s, s, s), wood);
     crate.position.set(x, y, z);

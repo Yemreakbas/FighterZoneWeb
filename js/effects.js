@@ -20,8 +20,15 @@ export function createEffects(scene) {
   }
   let cursor = 0;
 
-  const flashLight = new THREE.PointLight(0xffe0a0, 0, 6);
-  scene.add(flashLight);
+  // Impact flash: a bright additive glow at the hit point that fades fast. A
+  // point light would look similar but cost every lit pixel on screen in
+  // every frame, even while dark.
+  const glowTex = glowTexture();
+  const flash = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: glowTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+  }));
+  flash.visible = false;
+  scene.add(flash);
 
   // Shockwave: a flat ring that expands from each clean hit.
   const RING_LIFE = 0.28;
@@ -56,9 +63,11 @@ export function createEffects(scene) {
     s.mesh.rotation.set(Math.random() * 3, Math.random() * 3, 0);
     s.mesh.visible = true;
 
-    flashLight.color.copy(s.mesh.material.color);
-    flashLight.position.set(x, y, 1);
-    flashLight.intensity = heavy ? 18 : 10;
+    flash.material.color.copy(s.mesh.material.color);
+    flash.material.opacity = blocked ? 0.45 : heavy ? 0.95 : 0.75;
+    flash.position.set(x, y, 0.5);
+    flash.scale.setScalar(heavy ? 3.4 : 2.4);
+    flash.visible = true;
   }
 
   function update(dt) {
@@ -79,7 +88,10 @@ export function createEffects(scene) {
       s.mesh.material.opacity = 1 - k;
       s.mesh.rotation.z += dt * 10;
     }
-    flashLight.intensity *= Math.exp(-25 * dt);
+    if (flash.visible) {
+      flash.material.opacity *= Math.exp(-16 * dt);
+      if (flash.material.opacity < 0.02) flash.visible = false;
+    }
   }
 
   // Dust: a ring of puffs that roll outward along the floor and fade.
@@ -133,7 +145,7 @@ export function createEffects(scene) {
   const ORB_COLORS = [0xff5a3a, 0x3aa8ff, 0xff5a3a, 0x3aa8ff];
   const TRAIL = 3;
   const orbGeo = new THREE.SphereGeometry(1, 16, 12);
-  const haloTex = glowTexture();
+  const haloTex = glowTex;
   const additive = { transparent: true, blending: THREE.AdditiveBlending, depthWrite: false };
   const orbs = ORB_COLORS.map((color) => {
     const group = new THREE.Group();
@@ -208,7 +220,9 @@ export function createEffects(scene) {
       p.spin.set(Math.random() * 12, Math.random() * 12, Math.random() * 12);
     });
     spark(x, y + 1.2, { heavy: true });
-    flashLight.intensity = 40;
+    // A bigger, brighter burst than any hit.
+    flash.scale.setScalar(6);
+    flash.material.opacity = 1;
   }
 
   function updatePieces(dt) {

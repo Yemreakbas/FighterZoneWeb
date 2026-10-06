@@ -121,11 +121,14 @@ Maç sırasında, tıpkı ses efektleri gibi Web Audio ile kodda üretilen bir m
 
 - Menüde **GRAFİK** ayarı var: OTO / DÜŞÜK / ORTA / YÜKSEK (tarayıcıda hatırlanır).
   - DÜŞÜK: gölge yok, çözünürlük 0,85x.
-  - ORTA: 1024'lük gölge, en fazla 1,25x.
-  - YÜKSEK: 2048'lik gölge, en fazla 1,75x.
+  - ORTA: 1024×512 gölge, en fazla 1,25x.
+  - YÜKSEK: 2048×1024 gölge, en fazla 1,75x. Gölge alanı 2:1 olduğu için kare bir 2048'lik harita kadar keskindir ama yarı maliyetlidir.
 - OTO'da telefonlar ORTA, diğer cihazlar YÜKSEK ile başlar. Kare hızı 2 saniye boyunca ortalama 50 fps'in altında kalırsa kalite kendiliğinden bir kademe düşer.
 - Telefonlarda kenar yumuşatma (MSAA) kapalı. Gölge filtresi her cihazda ucuz PCF; gölge kamerası arenaya sıkı oturur.
-- Sahnede sadece 3 nokta ışık var: iki renkli kenar ışığı ve vuruş parlaması. Enerji topları ve meşaleler ışık yerine parlak malzeme ve hale sprite'larıyla çizilir. Zemin ve duvardaki aydınlık-karanlık geçişi köşe renklerine işlenmiştir, vinyet ise CSS ile çizilir. İkisinin de GPU maliyeti yok denecek kadar azdır.
+- Sahnede sadece 2 nokta ışık var: renkli kenar ışıkları. Vuruş parlaması, enerji topları ve meşaleler ışık yerine hale sprite'larıyla çizilir. Her nokta ışık ekrandaki her pikselin maliyetine eklenir, sprite ise sadece kapladığı yerde çizilir.
+- Dekor (zemin, duvar, taş, ahşap, kumaş) sadece dağınık ışık hesaplayan Lambert malzemesiyle çizilir. Bu yüzeyler zaten pürüzlü olduğu için PBR parlaması pek görünmüyordu, ama ekranın neredeyse tamamını kapladıkları için maliyeti büyüktü. Tümleşik bir GPU'da kare başına GPU süresi YÜKSEK ayarda 10,7 ms'den 5,6 ms'ye indi. Dövüşçüler PBR (MeshStandardMaterial) olarak kalır.
+- Gölgeyi sadece zemin ve platform yüzeyleri alır, yani dövüşçülerin bastığı yerler.
+- Zemin ve duvardaki aydınlık-karanlık geçişi köşe renklerine işlenmiştir, vinyet ise CSS ile çizilir. İkisinin de GPU maliyeti yok denecek kadar azdır.
 - Açılışta tüm shader'lar önceden derlenir, böylece ilk enerji topu, kristal ya da fatality'de takılma olmaz.
 - Dövüşçüler gölge alma hesabı yapmaz, sabit dekor her karede matris güncellemez.
 

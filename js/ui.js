@@ -36,9 +36,10 @@ export function setWins(index, wins) {
   for (let i = 0; i < pips.length; i++) pips[i].classList.toggle('on', i < wins);
 }
 
+/** Called every frame online: the DOM is only touched when the text changes. */
 export function setNetStatus(text, warn = false) {
   const el = $('net-status');
-  el.textContent = text;
+  if (el.textContent !== text) el.textContent = text;
   el.classList.toggle('warn', warn);
 }
 
