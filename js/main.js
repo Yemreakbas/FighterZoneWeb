@@ -27,7 +27,8 @@ const menuFighters = [createFighter(-1.6, 1), createFighter(1.6, -1)];
 
 /**
  * The active game session, or null while in menus. A session exposes
- * `update(dt)` returning `{ state, events, positions }` for rendering, plus
+ * `update(dt)` returning `{ state, events, positions }` for rendering (and
+ * optionally blended `projectiles` and platform `clock`), plus
  * optional `rematch()` / `dispose()`, a `canRematch` flag and `localIndex`
  * (the fighter this player controls).
  */
@@ -56,14 +57,14 @@ function createLocalSession(chars, gatherInputs, onTick, matchOptions = {}) {
   const randomArena = () => Math.floor(Math.random() * ARENAS.length);
   let match = createMatch(names, chars, randomArena(), matchOptions);
   let acc = 0;
-  let prev = snapshotPositions(match.state);
+  let prev = snapshotMotion(match.state);
   let events = [];
 
   /** Run as many fixed ticks as `dt` covers. */
   function advance(dt) {
     acc += dt;
     while (acc >= TICK) {
-      prev = snapshotPositions(match.state);
+      prev = snapshotMotion(match.state);
       match.step(gatherInputs(match.state), TICK);
       const tickEvents = match.drainEvents();
       events.push(...tickEvents);
@@ -72,20 +73,26 @@ function createLocalSession(chars, gatherInputs, onTick, matchOptions = {}) {
     }
   }
 
-  /** Render data: positions blended between the last two ticks. */
+  /** Render data: positions, animation time and projectiles blended between the last two ticks. */
   function view() {
     const alpha = acc / TICK;
     const positions = match.state.fighters.map((f, i) => {
-      const p = prev[i];
+      const p = prev.fighters[i];
       // A new round replaces the fighter objects; never lerp across that.
-      if (!p || p.ref !== f) return { x: f.x, y: f.y };
-      return { x: p.x + (f.x - p.x) * alpha, y: p.y + (f.y - p.y) * alpha };
+      if (!p || p.ref !== f) return { x: f.x, y: f.y, t: f.t };
+      // A move that started this tick shows from its first frame.
+      const t = p.action === f.action && p.t <= f.t ? p.t + (f.t - p.t) * alpha : f.t;
+      return { x: p.x + (f.x - p.x) * alpha, y: p.y + (f.y - p.y) * alpha, t };
+    });
+    const projectiles = match.state.projectiles.map((p) => {
+      const q = prev.shots.find((s) => s.ref === p);
+      return q ? { ...p, x: q.x + (p.x - q.x) * alpha } : p;
     });
     const out = events;
     events = [];
     // Platform clock blended like positions (it advances one TICK per step).
     const clock = Math.max(0, match.state.clock - (1 - alpha) * TICK);
-    return { state: match.state, events: out, positions, clock };
+    return { state: match.state, events: out, positions, projectiles, clock };
   }
 
   return {
@@ -99,13 +106,17 @@ function createLocalSession(chars, gatherInputs, onTick, matchOptions = {}) {
     rematch() {
       match = createMatch(names, chars, randomArena(), matchOptions);
       acc = 0;
-      prev = snapshotPositions(match.state);
+      prev = snapshotMotion(match.state);
     },
   };
 }
 
-function snapshotPositions(state) {
-  return state.fighters.map((f) => ({ ref: f, x: f.x, y: f.y }));
+/** What rendering blends between ticks: fighter positions and move time, projectile X. */
+function snapshotMotion(state) {
+  return {
+    fighters: state.fighters.map((f) => ({ ref: f, x: f.x, y: f.y, action: f.action, t: f.t })),
+    shots: state.projectiles.map((p) => ({ ref: p, x: p.x })),
+  };
 }
 
 /**
@@ -768,7 +779,9 @@ function handleEvents(events) {
     } else if (e.type === 'hit') {
       sound.play(e.throw ? 'grab' : e.blocked ? 'block' : e.heavy ? 'heavy' : 'hit');
       effects.spark(num(e.x), num(e.y), { blocked: !!e.blocked, heavy: !!e.heavy });
-      if (!e.blocked) views[fighterIndex(e.target)]?.flash();
+      const struck = views[fighterIndex(e.target)];
+      struck?.impact(!!e.heavy, !!e.blocked);
+      if (!e.blocked) struck?.flash();
       stage.shake(e.blocked ? 0.06 : e.heavy ? 0.28 : 0.14);
       if (e.throw) stage.punchZoom(0.6);
     } else if (e.type === 'slam') {
@@ -999,20 +1012,20 @@ function frame(now) {
   if (session?.pausable && !paused && portraitPhone.matches) pause();
 
   if (session && !(paused && session.pausable)) {
-    const { state, events, positions, clock } = session.update(dt);
+    const { state, events, positions, projectiles, clock } = session.update(dt);
     if (state) {
       stage.updatePlatforms(clock ?? state.clock ?? 0);
       const chars = state.chars || [0, 1];
       applyCharacterColors(chars, state.teams || defaultTeams(chars.length), session.localIndex ?? 0);
       stage.setArena(state.arena ?? 0);
       state.fighters.forEach((f, i) => {
-        views[i]?.update(f, dt, positions[i].x, positions[i].y);
+        views[i]?.update(f, dt, positions[i].x, positions[i].y, positions[i].t);
         // A puff of dust when landing from a jump (knockdowns have their own slam).
         if (f.grounded && wasAirborne[i] && f.action !== 'hit') effects.dust(positions[i].x, 0.45, positions[i].y);
         wasAirborne[i] = !f.grounded;
       });
       stage.updateCamera(dt, positions);
-      effects.syncProjectiles(state.projectiles || [], dt);
+      effects.syncProjectiles(projectiles ?? state.projectiles ?? [], dt);
       effects.syncPickup(state.pickup ?? null, dt);
       hud.sync(state);
       handleEvents(events);

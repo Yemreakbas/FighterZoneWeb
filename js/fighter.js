@@ -77,6 +77,26 @@ function startAttack(f, type) {
 }
 
 /**
+ * A grounded punch or kick that has connected (hit or blocked) can be cut
+ * short by a buffered move from its `cancel` list (see ATTACKS).
+ */
+function canCancel(f) {
+  const routes = ATTACKS[f.action].cancel;
+  if (!routes || !f.attackHit || !f.grounded || isSweep(f) || !f.buffer) return false;
+  if (!routes.includes(f.buffer.type)) return false;
+  return f.buffer.type !== 'special' || f.cooldown <= 0;
+}
+
+/** Start the buffered move now, from a crouch if down is held (specials stand). */
+function cancelInto(f, input) {
+  const type = f.buffer.type;
+  const vx = f.vx; // keep a combo breaker's push-back
+  f.crouch = type !== 'special' && input.down;
+  startAttack(f, type);
+  f.vx = vx;
+}
+
+/**
  * During hit-stop nothing moves, but attack presses are remembered so they
  * are not lost to the freeze. Shared by the host and client prediction.
  */
@@ -108,7 +128,9 @@ export function stepFighter(f, input, opp, dt) {
   } else if (isAttacking(f) || f.action === 'special' || f.action === 'throw') {
     const a = ATTACKS[f.action];
     const recovery = a.recovery + (isSweep(f) ? SWEEP.extraRecovery : 0);
-    if (f.t >= a.startup + a.active + recovery) {
+    if (canCancel(f)) {
+      cancelInto(f, input);
+    } else if (f.t >= a.startup + a.active + recovery) {
       setAction(f, f.grounded ? (f.crouch ? 'crouch' : 'idle') : 'jump');
     }
   }

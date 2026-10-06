@@ -73,17 +73,24 @@ export const BODY = {
  * can only hit during the active window. `hitY` is the vertical span of
  * the hitbox relative to the attacker's feet; `reach` is how far in front
  * of the attacker the hitbox extends.
+ *
+ * `cancel`: once a grounded attack has connected (hit or blocked), a move
+ * from this list pressed meanwhile cuts the rest of it short, so strings
+ * flow punch -> kick -> special. Only stronger moves, never a whiff, and a
+ * sweep keeps its full recovery (a blocked sweep stays punishable).
  */
 export const ATTACKS = {
   punch: {
     startup: 0.07, active: 0.08, recovery: 0.16,
     damage: 6, chip: 0.6, reach: 1.2, hitY: [1.3, 1.65],
     knockback: 2.5, hitstun: 0.4, blockstun: 0.14, // long enough to chain into punch or kick
+    cancel: ['kick', 'special'],
   },
   kick: {
     startup: 0.14, active: 0.1, recovery: 0.3,
     damage: 11, chip: 1.2, reach: 1.55, hitY: [0.55, 1.1],
     knockback: 5.5, hitstun: 0.42, blockstun: 0.2,
+    cancel: ['special'],
   },
 };
 // Special move: launches a projectile when startup ends. It has no melee

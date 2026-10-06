@@ -89,6 +89,43 @@ test('punch chains count as a combo', () => {
   assert.ok(combos.includes(2), `expected a 2-hit combo, got ${combos}`);
 });
 
+test('a punch that connects cancels straight into a kick', () => {
+  const m = fightAt(0, 1);
+  const f = m.state.fighters[0];
+  // Kick pressed during the punch's startup comes out as soon as the punch
+  // lands, long before the punch's own recovery would have ended.
+  const ev = [];
+  let kickTick = -1;
+  for (let t = 0; t < 40; t++) {
+    ev.push(...run(m, 1, () => [t === 0 ? { punch: true } : t === 2 ? { kick: true } : {}, {}]));
+    if (kickTick < 0 && f.action === 'kick') kickTick = t;
+  }
+  const a = ATTACKS.punch;
+  assert.ok(kickTick > 0 && kickTick * TICK < a.startup + a.active + a.recovery, `kick started at tick ${kickTick}`);
+  const clean = hits(ev).filter((e) => !e.blocked);
+  assert.equal(clean.length, 2);
+  assert.equal(clean[1].heavy, true);
+});
+
+test('a whiffed punch cannot be cancelled', () => {
+  const m = fightAt(0, 3); // out of reach
+  run(m, 12, (t) => [t === 0 ? { punch: true } : t === 2 ? { kick: true } : {}, {}]);
+  assert.equal(m.state.fighters[0].action, 'punch');
+});
+
+test('cancels only go up: a kick that lands is not cut into a punch', () => {
+  const m = fightAt(0, 1);
+  run(m, 20, (t) => [t === 0 ? { kick: true } : t === 10 ? { punch: true } : {}, {}]);
+  assert.equal(m.state.fighters[0].action, 'kick');
+});
+
+test('a sweep keeps its full recovery even when it lands', () => {
+  const m = fightAt(0, 1);
+  const ev = run(m, 30, (t) => [t === 0 ? { down: true, kick: true } : t === 12 ? { special: true } : {}, {}]);
+  assert.equal(hits(ev).length, 1);
+  assert.equal(m.state.fighters[0].action, 'kick');
+});
+
 test('character power scales damage', () => {
   const m = fightAt(0, 1, [0, 1]); // KOR (power 1.15) vs AYAZ
   run(m, 30, press('punch'));
