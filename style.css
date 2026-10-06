@@ -24,6 +24,14 @@ html, body {
 
 #game-container { position: fixed; inset: 0; }
 #game-container canvas { display: block; }
+/* Vignette over the 3D view (below the HUD): edges darken, the eye goes to the fight. */
+#game-container::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse 75% 70% at 50% 55%, transparent 55%, rgba(0, 0, 0, 0.5) 100%);
+}
 
 .hidden { display: none !important; }
 

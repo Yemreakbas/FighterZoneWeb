@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { glowTexture } from './scene.js';
 
 // Short-lived hit sparks from a small reusable pool (no per-hit allocation).
 
@@ -127,32 +128,35 @@ export function createEffects(scene) {
   }
 
   // Projectiles: up to one per fighter (4 in a team fight), coloured by owner.
+  // A white core in a coloured glow, a soft halo around it and a short
+  // fading trail behind it.
   const ORB_COLORS = [0xff5a3a, 0x3aa8ff, 0xff5a3a, 0x3aa8ff];
+  const TRAIL = 3;
   const orbGeo = new THREE.SphereGeometry(1, 16, 12);
+  const haloTex = glowTexture();
+  const additive = { transparent: true, blending: THREE.AdditiveBlending, depthWrite: false };
   const orbs = ORB_COLORS.map((color) => {
     const group = new THREE.Group();
-    const glow = new THREE.Mesh(orbGeo, new THREE.MeshBasicMaterial({
-      color, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false,
-    }));
+    const glow = new THREE.Mesh(orbGeo, new THREE.MeshBasicMaterial({ color, opacity: 0.45, ...additive }));
     const core = new THREE.Mesh(orbGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }));
     core.scale.setScalar(0.12);
     glow.scale.setScalar(0.26);
     // No point light per orb: up to four extra lights would cost every lit
-    // pixel on screen. The additive glow carries the effect.
-    group.add(glow, core);
+    // pixel on screen. The additive glow and halo carry the effect.
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, color, opacity: 0.75, ...additive }));
+    const trail = Array.from({ length: TRAIL }, (_, k) =>
+      new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, color, opacity: 0.5 - k * 0.14, ...additive })));
+    group.add(halo, ...trail, glow, core);
+    group.visible = false;
     scene.add(group);
-    return { glow, core, group };
+    return { glow, core, halo, trail, group };
   });
-  const showOrb = (o, on) => {
-    o.glow.visible = o.core.visible = on;
-  };
-  orbs.forEach((o) => showOrb(o, false));
   let orbTime = 0;
 
   /** Mirror the simulation's projectile list (positions already interpolated). */
   function syncProjectiles(list, dt) {
     orbTime += dt;
-    orbs.forEach((o, i) => showOrb(o, list.some((p) => p.owner === i)));
+    orbs.forEach((o, i) => { o.group.visible = list.some((p) => p.owner === i); });
     for (const p of list) {
       const o = orbs[p.owner];
       if (!o) continue;
@@ -163,13 +167,20 @@ export function createEffects(scene) {
       const pulse = 1.18 + Math.sin(orbTime * 30) * 0.18;
       o.glow.scale.set(r * pulse * (flat < 1 ? 1.6 : 1), r * pulse * flat, r * pulse);
       o.core.scale.set(r * 0.55, r * 0.55 * flat, r * 0.55);
+      o.halo.scale.set(r * 5.5 * pulse, r * 5.5 * pulse * flat, 1);
+      // The trail streams out behind, shrinking.
+      const back = -(Math.sign(p.vx) || 1);
+      o.trail.forEach((t, k) => {
+        t.position.set(back * r * (1.4 + k * 1.3), 0, 0);
+        t.scale.set(r * (3.4 - k * 0.8), r * (3.4 - k * 0.8) * flat, 1);
+      });
     }
   }
 
   function setProjectileColor(owner, color) {
     const o = orbs[owner];
     if (!o) return;
-    o.glow.material.color.setHex(color);
+    for (const m of [o.glow, o.halo, ...o.trail]) m.material.color.setHex(color);
   }
 
   // Fatality: the body bursts into tumbling pieces that bounce and settle.

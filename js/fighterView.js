@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { ATTACKS, SWEEP } from './config.js';
 
 // Visual representation of a fighter built from primitives inside a
@@ -10,6 +11,15 @@ const SKIN = 0xd9a37a;
 const DARK = 0x1c1c22;
 const BONE = 0xe8dcc0;
 const WHITE = new THREE.Color(0xffffff);
+const PANTS_SHADE = 0.66; // trousers: a darker shade of the outfit colour
+
+// Inked outline: every body part gets a back-face hull a little larger than
+// itself, drawn in near-black, so fighters read clearly against the arena.
+const OUTLINE_WIDTH = 0.013;
+const outlineMat = new THREE.MeshBasicMaterial({ color: 0x07070b, side: THREE.BackSide });
+
+/** `hex` with each channel scaled by `k` (0..1). */
+const shade = (hex, k) => new THREE.Color(hex).multiplyScalar(k);
 
 // Visual-only motion timings (seconds).
 const FLIP_TIME = 0.5;  // somersault of a jump toward or away from the opponent
@@ -18,11 +28,12 @@ const LAND_TIME = 0.16; // knees give on landing
 export function createFighterView(scene, color) {
   const mats = {
     skin: new THREE.MeshStandardMaterial({ color: SKIN, roughness: 0.7 }),
-    cloth: new THREE.MeshStandardMaterial({ color, roughness: 0.55 }),
+    cloth: new THREE.MeshStandardMaterial({ color, roughness: 0.6 }),
+    pants: new THREE.MeshStandardMaterial({ color: shade(color, PANTS_SHADE), roughness: 0.75 }),
     dark: new THREE.MeshStandardMaterial({ color: DARK, roughness: 0.8 }),
     glove: new THREE.MeshStandardMaterial({ color: DARK, roughness: 0.6 }),
     bone: new THREE.MeshStandardMaterial({ color: BONE, roughness: 0.5 }),
-    bolt: new THREE.MeshStandardMaterial({ color: 0xfff2a0, emissive: 0xffd23f, emissiveIntensity: 0.8, roughness: 0.4 }),
+    bolt: new THREE.MeshStandardMaterial({ color: 0xe8f6ff, emissive: 0x8fd0ff, emissiveIntensity: 0.9, roughness: 0.4 }),
   };
 
   const mesh = (geo, mat, x = 0, y = 0, z = 0) => {
@@ -38,44 +49,92 @@ export function createFighterView(scene, color) {
     return g;
   };
 
-  // Two-segment limb: upper pivot -> lower pivot -> end piece.
-  function limb(parent, x, y, len1, len2, r, upperMat, lowerMat, end) {
+  /**
+   * Give every mesh under `obj` its outline hull: the same geometry scaled
+   * about its centre so it sticks out OUTLINE_WIDTH on every side (the mesh's
+   * own scale included). Flat pieces like the cape get none.
+   */
+  function ink(obj) {
+    const size = new THREE.Vector3();
+    const centre = new THREE.Vector3();
+    obj.traverse((m) => {
+      if (!m.isMesh || m.userData.hull || m.userData.inked) return;
+      m.userData.inked = true;
+      if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
+      const box = m.geometry.boundingBox;
+      box.getSize(size).multiply(m.scale);
+      if (Math.min(size.x, size.y, size.z) < 1e-3) return;
+      box.getCenter(centre);
+      const hull = new THREE.Mesh(m.geometry, outlineMat);
+      hull.userData.hull = true;
+      hull.scale.set(
+        1 + (2 * OUTLINE_WIDTH) / size.x,
+        1 + (2 * OUTLINE_WIDTH) / size.y,
+        1 + (2 * OUTLINE_WIDTH) / size.z,
+      );
+      hull.position.set(centre.x * (1 - hull.scale.x), centre.y * (1 - hull.scale.y), centre.z * (1 - hull.scale.z));
+      m.add(hull);
+    });
+  }
+
+  // Two-segment limb: upper pivot -> lower pivot -> end pieces. Capsules
+  // reach past the joints, so a bent elbow or knee never shows a gap.
+  function limb(parent, x, y, len1, len2, r1, r2, upperMat, lowerMat, end) {
     const upper = group(parent, x, y);
-    upper.add(mesh(new THREE.CylinderGeometry(r, r * 0.85, len1, 10), upperMat, 0, -len1 / 2));
+    upper.add(mesh(new THREE.CapsuleGeometry(r1, len1 - r1, 3, 10), upperMat, 0, -len1 / 2));
     const lower = group(upper, 0, -len1);
-    lower.add(mesh(new THREE.CylinderGeometry(r * 0.85, r * 0.7, len2, 10), lowerMat, 0, -len2 / 2));
-    lower.add(end);
+    lower.add(mesh(new THREE.CapsuleGeometry(r2, len2 - r2, 3, 10), lowerMat, 0, -len2 / 2));
+    for (const piece of end) lower.add(piece);
     return { upper, lower };
   }
 
   const root = group(scene);
   const body = group(root);           // facing rotation
   const hips = group(body, 0, 1);     // pelvis pivot, height animated
-  hips.add(mesh(new THREE.BoxGeometry(0.42, 0.22, 0.26), mats.cloth));
-  hips.add(mesh(new THREE.BoxGeometry(0.46, 0.07, 0.3), mats.dark, 0, 0.12)); // belt
+  // Trousers and a knotted belt.
+  const pelvis = mesh(new THREE.CylinderGeometry(0.2, 0.22, 0.26, 12), mats.pants, 0, -0.02);
+  pelvis.scale.z = 0.7;
+  hips.add(pelvis);
+  const belt = mesh(new THREE.CylinderGeometry(0.218, 0.214, 0.075, 12), mats.dark, 0, 0.12);
+  belt.scale.z = 0.72;
+  hips.add(belt);
+  hips.add(mesh(new RoundedBoxGeometry(0.1, 0.07, 0.05, 1, 0.015), mats.dark, 0.07, 0.12, 0.155));
 
+  // Fighting top in the character's colour: a chest tapering to the waist,
+  // rounded shoulders and a neck.
   const spine = group(hips, 0, 0.12);
-  spine.add(mesh(new THREE.BoxGeometry(0.56, 0.62, 0.3), mats.skin, 0, 0.36));
-  spine.add(mesh(new THREE.BoxGeometry(0.58, 0.2, 0.32), mats.cloth, 0, 0.6)); // shoulder wrap
+  const torso = mesh(new THREE.CylinderGeometry(0.29, 0.21, 0.6, 12), mats.cloth, 0, 0.33);
+  torso.scale.z = 0.64;
+  spine.add(torso);
+  for (const side of [-1, 1]) spine.add(mesh(new THREE.SphereGeometry(0.095, 12, 10), mats.cloth, side * 0.31, 0.6));
+  spine.add(mesh(new THREE.CylinderGeometry(0.075, 0.085, 0.18, 10), mats.skin, 0, 0.7));
 
   const head = group(spine, 0, 0.84);
   head.add(mesh(new THREE.SphereGeometry(0.17, 16, 12), mats.skin, 0, 0.06));
   head.add(mesh(new THREE.CylinderGeometry(0.178, 0.178, 0.1, 16), mats.cloth, 0, 0.08)); // headband
   head.add(mesh(new THREE.BoxGeometry(0.2, 0.05, 0.05), mats.dark, 0, 0.1, 0.16));         // eye slit
 
-  const fist = () => mesh(new THREE.SphereGeometry(0.08, 10, 8), mats.glove, 0, -0.3);
-  const foot = () => mesh(new THREE.BoxGeometry(0.13, 0.07, 0.26), mats.dark, 0, -0.45, 0.05);
+  // Bare arms with wrapped wrists and gloved fists; boots over the trousers.
+  const fist = () => [
+    mesh(new THREE.CylinderGeometry(0.064, 0.06, 0.09, 10), mats.glove, 0, -0.22),
+    mesh(new THREE.SphereGeometry(0.088, 12, 10), mats.glove, 0, -0.3),
+  ];
+  const foot = () => [
+    mesh(new THREE.CylinderGeometry(0.09, 0.082, 0.2, 10), mats.dark, 0, -0.34),
+    mesh(new RoundedBoxGeometry(0.14, 0.09, 0.28, 2, 0.03), mats.dark, 0, -0.45, 0.05),
+  ];
 
   // L sits on local +X, R on local -X. Which one is nearer to the camera
   // depends on facing; the near limbs perform the attacks.
   const arms = {
-    L: limb(spine, 0.36, 0.62, 0.3, 0.28, 0.065, mats.skin, mats.cloth, fist()),
-    R: limb(spine, -0.36, 0.62, 0.3, 0.28, 0.065, mats.skin, mats.cloth, fist()),
+    L: limb(spine, 0.36, 0.62, 0.3, 0.28, 0.062, 0.056, mats.skin, mats.skin, fist()),
+    R: limb(spine, -0.36, 0.62, 0.3, 0.28, 0.062, 0.056, mats.skin, mats.skin, fist()),
   };
   const legs = {
-    L: limb(hips, 0.13, -0.06, 0.46, 0.44, 0.09, mats.cloth, mats.cloth, foot()),
-    R: limb(hips, -0.13, -0.06, 0.46, 0.44, 0.09, mats.cloth, mats.cloth, foot()),
+    L: limb(hips, 0.13, -0.06, 0.46, 0.44, 0.098, 0.082, mats.pants, mats.pants, foot()),
+    R: limb(hips, -0.13, -0.06, 0.46, 0.44, 0.098, 0.082, mats.pants, mats.pants, foot()),
   };
+  ink(body);
 
   // ---- Character gear: each fighter's silhouette, built on setCharacter ----
   // Pieces are added to the existing joints so they follow the animation;
@@ -111,8 +170,9 @@ export function createFighterView(scene, color) {
       // Heavyweight: broader build, spiked shoulder plates, horned helmet.
       body.scale.set(1.08, 1.03, 1.08);
       for (const side of [-1, 1]) {
-        add(spine, mesh(new THREE.BoxGeometry(0.26, 0.12, 0.36), mats.dark, side * 0.34, 0.7, 0));
-        const spike = add(spine, mesh(new THREE.ConeGeometry(0.05, 0.14, 6), mats.bone, side * 0.4, 0.81, 0));
+        const plate = add(spine, mesh(new RoundedBoxGeometry(0.26, 0.12, 0.34, 2, 0.035), mats.dark, side * 0.33, 0.68, 0));
+        plate.rotation.z = -side * 0.18;
+        const spike = add(spine, mesh(new THREE.ConeGeometry(0.05, 0.14, 6), mats.bone, side * 0.4, 0.79, 0));
         spike.rotation.z = -side * 0.5;
         const horn = add(head, mesh(new THREE.ConeGeometry(0.035, 0.2, 6), mats.bone, side * 0.19, 0.12, 0));
         horn.rotation.z = -side * 1.15;
@@ -131,7 +191,7 @@ export function createFighterView(scene, color) {
       mats.cloth.side = THREE.DoubleSide;
       const hood = add(head, mesh(new THREE.SphereGeometry(0.2, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.62), mats.cloth, 0, 0.05, -0.02));
       hood.rotation.x = -0.35;
-      const cape = pivot(spine, 0, 0.66, -0.17, 0.12);
+      const cape = pivot(spine, 0, 0.66, -0.2, 0.12);
       cape.add(mesh(new THREE.PlaneGeometry(0.52, 0.95), mats.cloth, 0, -0.47, 0));
     } else if (id === 'yildirim') {
       // Thunder: spiky hair and a lightning bolt on the chest.
@@ -139,11 +199,13 @@ export function createFighterView(scene, color) {
         const spike = add(head, mesh(new THREE.ConeGeometry(0.05, i < 4 ? 0.16 : 0.12, 6), mats.cloth, x, 0.2, i === 5 ? -0.09 : -0.02));
         spike.rotation.set(i === 5 ? -0.6 : -0.2, 0, tilt);
       });
+      // An electric bolt on the chest stands out against the gold top.
       for (const [x, y, rz] of [[0.04, 0.5, 0.5], [-0.03, 0.38, -0.5], [0.03, 0.26, 0.5]]) {
-        const seg = add(spine, mesh(new THREE.BoxGeometry(0.05, 0.15, 0.02), mats.bolt, x, y, 0.16));
+        const seg = add(spine, mesh(new THREE.BoxGeometry(0.05, 0.15, 0.02), mats.bolt, x, y, 0.175));
         seg.rotation.z = rz;
       }
     }
+    gear.forEach(ink);
   }
 
   // Team-fight markers: a ring on the floor in the team colour and an arrow
@@ -318,6 +380,7 @@ export function createFighterView(scene, color) {
     impact,
     setColor(color) {
       mats.cloth.color.setHex(color);
+      mats.pants.color.copy(shade(color, PANTS_SHADE));
       swipeMat.color.setHex(color).lerp(WHITE, 0.6);
     },
     /** Character-specific gear and build (CHARACTERS[i].id). */

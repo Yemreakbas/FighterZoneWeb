@@ -76,7 +76,7 @@ Her arenada üç **katı** platform var:
 
 Platformların içinden geçilmez: altından zıplarsan kafan çarpar, yandan gelirsen kenarına çarparsın. Platforma çıkmak için **yanından ona doğru zıpla** (ileri + W). Zıplama devam ederken ayakların kenarı aşınca üstüne çıkarsın; ayaklar kenardan biraz taşsa bile basılır. İnmek için kenardan yürü. Yerden zıplayan birinin kafası üstteki platforma hiçbir yükseklikte yetişmez, hareketli platform tırmanmayı kesmez. Fırlatma sadece aynı seviyedeki rakibe yapılır. Botlar da kenardan tırmanır, kenardan yürüyerek iner. Hareketli platformun konumu maç saatinden hesaplanır, online maçta herkes aynı yeri görür.
 
-Arka planda sütunlar ve titreyen meşaleler, sınırlarda sandıklar ve fıçılar, yerde arena amblemi var. Hepsi ekstra ışık kullanmadan çizilir.
+Yan platformlar arkadaki taş kemerlerin üstüne oturur. Arka planda kaideli sütunlar, demir kâseli ve haleli meşaleler, armalı ve hafifçe dalgalanan sancaklar var. Sınırlarda sandıklar ve fıçılar, yerde de arena amblemi duruyor. Zemin ve duvar dövüş alanında aydınlık, kenarlara doğru karanlık, ekranın kenarlarında da hafif bir vinyet var. Böylece göz dövüşe gider. Hepsi ekstra ışık kullanmadan çizilir.
 
 ## Karakterlere özel hareketler
 
@@ -102,6 +102,7 @@ Dokunan alır. 10 saniye içinde kimse almazsa kaybolur. Botlar canları azken y
 
 ## Görsel
 
+- Dövüşçüler kendi renklerinde kıyafet giyer: üstü karakter renginde, pantolonu aynı rengin koyu tonunda, kemer, sargı, eldiven ve botlar koyu. İnce koyu bir kontur onları arka plandan ayırır. Uzuvlar kapsül biçiminde olduğu için dirsek ve dizlerde boşluk görünmez.
 - Her karakterin kendine özgü görünümü var:
   - **KOR:** iri yapı, dikenli omuz zırhı, boynuzlu kask.
   - **AYAZ:** buz mavisi eldivenler, savrulan bandana uçları.
@@ -109,6 +110,7 @@ Dokunan alır. 10 saniye içinde kimse almazsa kaybolur. Botlar canları azken y
   - **YILDIRIM:** dikenli saç, göğsünde parlayan şimşek.
 - Can barları parlak; yenen hasar arkada açık renkli bir iz olarak kalır ve kısa bir gecikmeyle erir. Can %25'in altına inince bar nabız gibi atar.
 - Temiz vuruşlarda kıvılcımın yanında genişleyen bir şok halkası çıkar. Zıplayıp bir yüzeye inince küçük bir toz bulutu kalkar.
+- Enerji topları sahibinin renginde bir haleyle parlar ve arkalarında kısa, sönen bir iz bırakır.
 - Arenada meşalelerden kıvılcımlar yükselir (tek çizim çağrısı).
 
 ## Müzik
@@ -123,7 +125,7 @@ Maç sırasında, tıpkı ses efektleri gibi Web Audio ile kodda üretilen bir m
   - YÜKSEK: 2048'lik gölge, en fazla 1,75x.
 - OTO'da telefonlar ORTA, diğer cihazlar YÜKSEK ile başlar. Kare hızı 2 saniye boyunca ortalama 50 fps'in altında kalırsa kalite kendiliğinden bir kademe düşer.
 - Telefonlarda kenar yumuşatma (MSAA) kapalı. Gölge filtresi her cihazda ucuz PCF; gölge kamerası arenaya sıkı oturur.
-- Sahnede sadece 3 nokta ışık var: iki renkli kenar ışığı ve vuruş parlaması. Enerji topları ve meşaleler ışık yerine parlak malzemeyle çizilir.
+- Sahnede sadece 3 nokta ışık var: iki renkli kenar ışığı ve vuruş parlaması. Enerji topları ve meşaleler ışık yerine parlak malzeme ve hale sprite'larıyla çizilir. Zemin ve duvardaki aydınlık-karanlık geçişi köşe renklerine işlenmiştir, vinyet ise CSS ile çizilir. İkisinin de GPU maliyeti yok denecek kadar azdır.
 - Açılışta tüm shader'lar önceden derlenir, böylece ilk enerji topu, kristal ya da fatality'de takılma olmaz.
 - Dövüşçüler gölge alma hesabı yapmaz, sabit dekor her karede matris güncellemez.
 

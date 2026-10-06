@@ -175,12 +175,13 @@ export const ARENAS = [
     pillar: 0x3a3440, banners: [0xc62828, 0x1e5bd6],
   },
   {
+    // Kept darker and less saturated than the fighters so they stand out.
     name: 'TAPINAK',
-    sky: 0x2a1424, hemiSky: 0xffb27a, hemiGround: 0x3a1e0c, hemi: 1.0,
-    key: 0xffc890, keyIntensity: 2.6, rims: [0xff6a2a, 0xffb347], torch: 0xffc061,
-    floor: { base: '#5e4a30', speck: [110, 88, 58], grout: '#2e2214' },
-    wall: { base: '#24160e', brick: [88, 64, 42] },
-    pillar: 0x8a6a45, banners: [0x8a1c1c, 0xd4a017],
+    sky: 0x2a1424, hemiSky: 0xffc8a0, hemiGround: 0x2e1a0c, hemi: 0.9,
+    key: 0xffd2a0, keyIntensity: 2.3, rims: [0xff6a2a, 0xffb347], torch: 0xffc061,
+    floor: { base: '#4a3b2b', speck: [88, 72, 52], grout: '#241a10' },
+    wall: { base: '#1a120d', brick: [60, 45, 34] },
+    pillar: 0x5e4c3a, banners: [0x8a1c1c, 0xd4a017],
   },
 ];
 

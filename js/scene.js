@@ -110,6 +110,8 @@ export function createStage(container) {
     arena.pillar.color.setHex(a.pillar);
     arena.lip.emissive.setHex(a.torch);
     arena.flame.color.setHex(a.torch);
+    arena.glow.color.setHex(a.torch);
+    arena.pool.color.setHex(a.torch);
     arena.ember.color.setHex(a.torch);
     arena.emblem.color.setHex(a.torch);
     arena.banners.forEach((m, j) => {
@@ -182,12 +184,18 @@ export function createStage(container) {
     });
   }
 
-  /** Ambient animation: torch flames flicker. `time` in seconds. */
+  /** Ambient animation: torch flames flicker, banners stir. `time` in seconds. */
   function animate(time) {
     arena.updateEmbers(time);
-    arena.flames.forEach((f, i) => {
+    arena.flames.forEach(({ flame, glow }, i) => {
       const k = 1 + Math.sin(time * 13 + i * 2.1) * 0.12 + Math.sin(time * 29 + i) * 0.06;
-      f.scale.set(1, k, 1);
+      flame.scale.set(1, k, 1);
+      glow.scale.setScalar(1.3 * (0.94 + k * 0.06));
+    });
+    // Negative X tilts the hanging cloth's tail toward the camera; it always
+    // stays forward, so it never swings back into the wall.
+    arena.bannerPivots.forEach((b, i) => {
+      b.rotation.x = -0.04 - Math.sin(time * 0.9 + i * 1.7) * 0.025;
     });
   }
 
@@ -244,10 +252,49 @@ function addLights(scene) {
   return { hemi, key, rims: [rimRed, rimBlue] };
 }
 
+const smooth = (a, b, v) => {
+  const t = Math.max(0, Math.min(1, (v - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
+
+/**
+ * Bake a brightness falloff into a plane's vertex colours; it multiplies the
+ * texture, so light pools on the fight and fades into the gloom for free.
+ * `fn(x, y)` gets the plane's local coordinates and returns 0..1.
+ */
+function bakeShade(geo, fn) {
+  const pos = geo.attributes.position;
+  const colors = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) colors.fill(fn(pos.getX(i), pos.getY(i)), i * 3, i * 3 + 3);
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  return geo;
+}
+
+/** A wall slice with a round-topped opening: `w` wide, `h` tall, extruded `depth` along +Z. */
+function archGeometry(w, h, opening, depth) {
+  const r = opening / 2;
+  const spring = h - r - 0.25; // a band of stone above the arch
+  const s = new THREE.Shape();
+  s.moveTo(-w / 2, 0);
+  s.lineTo(-w / 2, h);
+  s.lineTo(w / 2, h);
+  s.lineTo(w / 2, 0);
+  s.lineTo(r, 0);
+  s.lineTo(r, spring);
+  s.absarc(0, spring, r, 0, Math.PI, false);
+  s.lineTo(-r, 0);
+  s.lineTo(-w / 2, 0);
+  return new THREE.ExtrudeGeometry(s, { depth, bevelEnabled: false, curveSegments: 14 });
+}
+
 function addArena(scene) {
+  // Floor: brightest where the fight is, darker toward the camera and the wall.
   const floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(60, 30),
-    new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0.1 })
+    bakeShade(new THREE.PlaneGeometry(60, 30, 40, 20), (x, y) => {
+      const d = Math.hypot(x / 15, y / (y < 0 ? 6 : 10)); // local -y faces the camera
+      return 1 - 0.55 * smooth(0.35, 1.2, d);
+    }),
+    new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0.1, vertexColors: true })
   );
   floor.rotation.x = -Math.PI / 2;
   floor.position.y = ARENA.groundY;
@@ -264,39 +311,69 @@ function addArena(scene) {
   lane.receiveShadow = true;
   scene.add(lane);
 
-  // Stone pillars marking the arena boundaries.
   const pillarMat = new THREE.MeshStandardMaterial({ color: 0x3a3440, roughness: 0.9 });
-  for (const side of [-1, 1]) {
-    const pillar = new THREE.Mesh(new THREE.BoxGeometry(1, 6, 1), pillarMat);
-    pillar.position.set(side * (ARENA.halfWidth + 1.5), 3, -1.5);
-    pillar.castShadow = true;
-    pillar.receiveShadow = true;
-    scene.add(pillar);
+  const ironMat = new THREE.MeshStandardMaterial({ color: 0x2a2a32, roughness: 0.5, metalness: 0.6 });
+  const solid = (geo, mat) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.castShadow = true;
+    m.receiveShadow = true;
+    return m;
+  };
 
+  // Stone pillars marking the arena boundaries, with a plinth and a capital
+  // (only the shaft casts a shadow; the trim isn't worth a shadow-pass draw).
+  for (const side of [-1, 1]) {
+    const x = side * (ARENA.halfWidth + 1.5);
+    for (const [w, h, y] of [[1, 6, 3], [1.3, 0.35, 0.175], [1.3, 0.3, 5.85]]) {
+      const block = solid(new THREE.BoxGeometry(w, h, w), pillarMat);
+      block.position.set(x, y, -1.5);
+      block.castShadow = h > 1;
+      scene.add(block);
+    }
   }
 
-  // Back wall.
+  // Back wall: fades into darkness toward the top and the far sides.
   const wall = new THREE.Mesh(
-    new THREE.PlaneGeometry(60, 20),
-    new THREE.MeshStandardMaterial({ roughness: 1 })
+    bakeShade(new THREE.PlaneGeometry(60, 20, 30, 20), (x, y) =>
+      (1 - 0.75 * smooth(2, 16, y + 10)) * (1 - 0.4 * smooth(10, 25, Math.abs(x)))),
+    new THREE.MeshStandardMaterial({ roughness: 1, vertexColors: true })
   );
   wall.position.set(0, 10, -8);
   scene.add(wall);
 
-  // Glowing banners (colours set per arena).
-  const banners = [-5, 5].map((x) => {
-    const mat = new THREE.MeshStandardMaterial({ emissiveIntensity: 0.12, roughness: 0.95 });
-    const banner = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 3.2), mat);
-    banner.position.set(x, 4.4, -7.9);
-    scene.add(banner);
-    return mat;
+  // Banners hanging from iron rods: emblem and swallow-tail cut drawn in
+  // greys, so the per-arena colour tints them. They sway a little (animate).
+  const bannerTex = bannerTexture();
+  const bannerMats = [];
+  const bannerPivots = [-5, 5].map((x) => {
+    const mat = new THREE.MeshStandardMaterial({
+      map: bannerTex, emissiveMap: bannerTex, emissiveIntensity: 0.14,
+      alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.95,
+    });
+    bannerMats.push(mat);
+    const pivot = new THREE.Group();
+    pivot.position.set(x, 6.4, -7.85); // high enough that the tail clears the platforms
+    scene.add(pivot);
+    const cloth = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 2.8), mat);
+    cloth.position.y = -1.42;
+    pivot.add(cloth);
+    const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.75, 8), ironMat);
+    rod.rotation.z = Math.PI / 2;
+    pivot.add(rod);
+    for (const end of [-0.9, 0.9]) {
+      const knob = new THREE.Mesh(new THREE.SphereGeometry(0.065, 10, 8), ironMat);
+      knob.position.x = end;
+      pivot.add(knob);
+    }
+    return pivot;
   });
 
-  // One-way platforms: stone slabs with a glowing front lip so their edge
-  // reads at a glance. Each is a group centred on the platform so moving
-  // ones (see updatePlatforms) carry their chains along. Side slabs stand on
-  // posts behind the fighting plane, the top one hangs on chains.
+  // Platforms: stone slabs with a glowing front lip so their edge reads at a
+  // glance. Each is a group centred on the platform so moving ones (see
+  // updatePlatforms) carry their chains along. Side slabs rest on a stone
+  // arch behind the fighting plane; the top one hangs on chains.
   const lipMat = new THREE.MeshStandardMaterial({ color: 0xffb060, emissive: 0xff8a2a, emissiveIntensity: 0.6, roughness: 0.5 });
+  const trimMat = new THREE.MeshStandardMaterial({ color: 0x15131a, roughness: 0.9 });
   const SLAB = ARENA.slab;
   const DEPTH = 1.8;
   const platforms = ARENA.platforms.map((p) => {
@@ -305,25 +382,25 @@ function addArena(scene) {
     group.position.x = (p.x0 + p.x1) / 2;
     scene.add(group);
 
-    const slab = new THREE.Mesh(new THREE.BoxGeometry(w, SLAB, DEPTH), pillarMat);
+    const slab = solid(new THREE.BoxGeometry(w, SLAB, DEPTH), pillarMat);
     slab.position.y = p.y - SLAB / 2;
-    slab.castShadow = true;
-    slab.receiveShadow = true;
     group.add(slab);
+    // A dark band along the underside of the front edge: the slab reads as thick, carved stone.
+    const trim = new THREE.Mesh(new THREE.BoxGeometry(w + 0.04, 0.07, 0.06), trimMat);
+    trim.position.set(0, p.y - SLAB + 0.035, DEPTH / 2 + 0.01);
+    group.add(trim);
 
     const lip = new THREE.Mesh(new THREE.BoxGeometry(w, 0.05, 0.05), lipMat);
     lip.position.set(0, p.y - 0.03, DEPTH / 2);
     group.add(lip);
 
     if (!p.move) {
-      for (const x of [-w / 2 + 0.25, w / 2 - 0.25]) {
-        const post = new THREE.Mesh(new THREE.BoxGeometry(0.22, p.y - SLAB, 0.22), pillarMat);
-        post.position.set(x, (p.y - SLAB) / 2, -DEPTH / 2 + 0.2);
-        group.add(post);
-      }
+      const arch = solid(archGeometry(w - 0.2, p.y - SLAB, 1.9, 0.4), pillarMat);
+      arch.position.z = -DEPTH / 2;
+      group.add(arch);
     } else {
       for (const x of [-w / 2 + 0.3, w / 2 - 0.3]) {
-        const chain = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 6, 6), lipMat);
+        const chain = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 6, 6), ironMat);
         chain.position.set(x, p.y + 3, -DEPTH / 2 + 0.2);
         group.add(chain);
       }
@@ -331,10 +408,11 @@ function addArena(scene) {
     return group;
   });
 
-  const details = addDetails(scene, pillarMat);
+  const details = addDetails(scene, pillarMat, ironMat);
 
   return {
-    floor: floor.material, wall: wall.material, pillar: pillarMat, banners, lip: lipMat, platforms, ...details,
+    floor: floor.material, wall: wall.material, pillar: pillarMat, banners: bannerMats, bannerPivots,
+    lip: lipMat, platforms, ...details,
   };
 }
 
@@ -345,7 +423,7 @@ function addArena(scene) {
  * lights, so it adds draw calls but almost no shading cost. Static meshes
  * skip per-frame matrix updates.
  */
-function addDetails(scene, stoneMat) {
+function addDetails(scene, stoneMat, ironMat) {
   const freeze = (m) => {
     m.updateMatrix();
     m.matrixAutoUpdate = false;
@@ -353,26 +431,52 @@ function addDetails(scene, stoneMat) {
     return m;
   };
 
-  // Columns along the back wall, each with a torch.
-  const flameMat = new THREE.MeshBasicMaterial({ color: 0xff8a2a, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false });
-  const bracketMat = new THREE.MeshStandardMaterial({ color: 0x1c1c22, roughness: 0.8 });
-  const flameGeo = new THREE.ConeGeometry(0.16, 0.5, 8);
+  // Columns along the back wall, each with a torch: an iron arm and bowl, a
+  // two-layer flame, a glow halo and a soft pool of light on the stone.
+  const additive = { transparent: true, blending: THREE.AdditiveBlending, depthWrite: false };
+  const flameMat = new THREE.MeshBasicMaterial({ color: 0xff8a2a, opacity: 0.85, ...additive });
+  const coreMat = new THREE.MeshBasicMaterial({ color: 0xfff0c8, opacity: 0.9, ...additive });
+  const glowTex = glowTexture();
+  const glowMat = new THREE.SpriteMaterial({ map: glowTex, color: 0xff8a2a, opacity: 0.55, ...additive });
+  const poolMat = new THREE.SpriteMaterial({ map: glowTex, color: 0xff8a2a, opacity: 0.2, ...additive });
+  const flameGeo = new THREE.ConeGeometry(0.14, 0.5, 8);
+  const coreGeo = new THREE.ConeGeometry(0.07, 0.28, 8);
   const flames = [];
   for (const x of [-11, -2.6, 2.6, 11]) {
     const column = new THREE.Mesh(new THREE.BoxGeometry(1, 12, 0.7), stoneMat);
     column.position.set(x, 6, -7.6);
     freeze(column);
-    const bracket = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.32, 0.3), bracketMat);
-    bracket.position.set(x, 3.6, -7.1);
-    freeze(bracket);
-    const flame = new THREE.Mesh(flameGeo, flameMat);
-    flame.position.set(x, 4.0, -7.0);
+    const plinth = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.5, 0.9), stoneMat);
+    plinth.position.set(x, 0.25, -7.6);
+    freeze(plinth);
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.42), ironMat);
+    arm.position.set(x, 3.56, -7.04);
+    freeze(arm);
+    const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.08, 0.2, 10), ironMat);
+    bowl.position.set(x, 3.7, -6.84);
+    freeze(bowl);
+
+    const flame = new THREE.Group();
+    flame.position.set(x, 3.8, -6.84);
+    const outer = new THREE.Mesh(flameGeo, flameMat);
+    outer.position.y = 0.25;
+    const core = new THREE.Mesh(coreGeo, coreMat);
+    core.position.y = 0.14;
+    flame.add(outer, core);
     scene.add(flame);
-    flames.push(flame);
+    const glow = new THREE.Sprite(glowMat);
+    glow.position.set(x, 4.05, -6.8);
+    glow.scale.setScalar(1.3);
+    scene.add(glow);
+    const pool = new THREE.Sprite(poolMat);
+    pool.position.set(x, 3.95, -7.2);
+    pool.scale.setScalar(3.4);
+    scene.add(pool);
+    flames.push({ flame, glow });
   }
 
   // Crates by the left pillar, barrels by the right one (behind the lane).
-  const wood = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 0.9 });
+  const wood = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 0.9, map: crateTexture() });
   const darkWood = new THREE.MeshStandardMaterial({ color: 0x4a2f1a, roughness: 0.85 });
   const band = new THREE.MeshStandardMaterial({ color: 0x2a2a30, roughness: 0.6, metalness: 0.4 });
   for (const [x, y, z, s, r] of [[-9.6, 0.45, -2.6, 0.9, 0.2], [-8.6, 0.4, -3.1, 0.8, -0.3], [-9.2, 1.3, -2.9, 0.8, 0.5]]) {
@@ -395,9 +499,8 @@ function addDetails(scene, stoneMat) {
   }
 
   // Chains hanging in the background.
-  const chainMat = new THREE.MeshStandardMaterial({ color: 0x3a3a42, roughness: 0.5, metalness: 0.6 });
   for (const [x, len] of [[-6.5, 4], [-5.9, 2.8], [7.2, 3.4]]) {
-    const chain = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, len, 6), chainMat);
+    const chain = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, len, 6), ironMat);
     chain.position.set(x, 10 - len / 2, -5.5);
     freeze(chain);
   }
@@ -441,7 +544,7 @@ function addDetails(scene, stoneMat) {
     emberGeo.attributes.position.needsUpdate = true;
   }
 
-  return { flames, flame: flameMat, emblem: emblemMat, ember: emberMat, updateEmbers };
+  return { flames, flame: flameMat, glow: glowMat, pool: poolMat, emblem: emblemMat, ember: emberMat, updateEmbers };
 }
 
 // ---------------------------------------------------------------------------
@@ -481,6 +584,96 @@ function stoneTexture(palette, repeatX, repeatY) {
     g.moveTo(0, n / 2); g.lineTo(n, n / 2);
     g.stroke();
   }, repeatX / 2, repeatY / 2);
+}
+
+/** Soft round glow (white centre fading out) for additive halo sprites. */
+export function glowTexture() {
+  return canvasTexture(64, (g, n) => {
+    const grad = g.createRadialGradient(n / 2, n / 2, 0, n / 2, n / 2, n / 2);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.25, 'rgba(255,255,255,0.55)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, n, n);
+  });
+}
+
+/**
+ * Banner cloth: white with grey trim and emblem (the material colour tints
+ * it), cut into a swallow tail at the bottom (transparent, see alphaTest).
+ */
+function bannerTexture() {
+  const canvas = document.createElement('canvas');
+  const W = 128;
+  const H = 256;
+  canvas.width = W;
+  canvas.height = H;
+  const g = canvas.getContext('2d');
+  g.fillStyle = '#ffffff';
+  g.beginPath();
+  g.moveTo(0, 0);
+  g.lineTo(W, 0);
+  g.lineTo(W, H - 4);
+  g.lineTo(W / 2, H - 40);
+  g.lineTo(0, H - 4);
+  g.closePath();
+  g.fill();
+  g.fillStyle = '#9a9a9a';
+  g.fillRect(0, 8, W, 8);
+  g.fillRect(0, 22, W, 3);
+  g.strokeStyle = '#9a9a9a';
+  g.lineWidth = 5;
+  g.beginPath();
+  g.moveTo(6, H - 26);
+  g.lineTo(W / 2, H - 58);
+  g.lineTo(W - 6, H - 26);
+  g.stroke();
+  // Emblem: a ring around a diamond.
+  const cy = 112;
+  g.lineWidth = 7;
+  g.beginPath();
+  g.arc(W / 2, cy, 36, 0, Math.PI * 2);
+  g.stroke();
+  g.fillStyle = '#8a8a8a';
+  g.beginPath();
+  g.moveTo(W / 2, cy - 24);
+  g.lineTo(W / 2 + 17, cy);
+  g.lineTo(W / 2, cy + 24);
+  g.lineTo(W / 2 - 17, cy);
+  g.closePath();
+  g.fill();
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
+}
+
+/** Light wood planks with a darker frame and brace (the material colour tints it). */
+function crateTexture() {
+  return canvasTexture(128, (g, n) => {
+    g.fillStyle = '#e6dccf';
+    g.fillRect(0, 0, n, n);
+    for (let i = 0; i < 400; i++) {
+      g.fillStyle = `rgba(90, 60, 30, ${Math.random() * 0.12})`;
+      g.fillRect(Math.random() * n, Math.random() * n, 10 + Math.random() * 30, 1);
+    }
+    g.strokeStyle = 'rgba(70, 45, 22, 0.55)';
+    g.lineWidth = 2;
+    for (let i = 1; i < 4; i++) {
+      g.beginPath();
+      g.moveTo(0, (i * n) / 4);
+      g.lineTo(n, (i * n) / 4);
+      g.stroke();
+    }
+    g.strokeStyle = 'rgba(60, 38, 18, 0.75)';
+    g.lineWidth = 12;
+    g.strokeRect(6, 6, n - 12, n - 12);
+    g.lineWidth = 10;
+    g.beginPath();
+    g.moveTo(10, n - 10);
+    g.lineTo(n - 10, 10);
+    g.stroke();
+  });
 }
 
 function brickTexture(palette) {
